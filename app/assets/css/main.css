@@ -328,9 +328,10 @@
   font-family: var(--font-mono);
   font-weight: 400;
   font-size: 0.85em;
-  background: var(--marker);
-  color: var(--on-marker);
-  padding: 0.12em 0.36em;
+  background: var(--paper);
+  color: var(--foreground);
+  border: 1px solid var(--rule);
+  padding: 0.1em 0.34em;
   border-radius: 3px;
 }
 .prose :where(code):not(:where(pre code))::before,
