@@ -4,17 +4,17 @@
 1.踩的第一个坑，也不算坑吧，就是先直接安装orbbec sdk, github上我看limited maintannce, 还不信，压根什么都不行。所以说，需要先根据相机的型号选择正确的sdk。
 
 2.第二个就是得安装官方的sensordriver的驱动，然后需要安装usbpid，右键计算机图标，点击"管理"里面，找到新插入的摄像机，然后识别不出来的，就应该在这里面，右键点击更新驱动，然后就应该能显示了，显示不了的再重启一下
-![alt text](image-5.png)
-![alt text](image-4.png)
+![alt text](/images/blogs/关于ORBBEC%20Astra%20调试了半天的这件事/image-5.png)
+![alt text](/images/blogs/关于ORBBEC%20Astra%20调试了半天的这件事/image-4.png)
 
-![alt text](image-3.png)
+![alt text](/images/blogs/关于ORBBEC%20Astra%20调试了半天的这件事/image-3.png)
 3.就是装好wsl后，建议配置一下python的虚拟环境，装一些依赖，nano里面可以添加配置，这样每次一启动就配置好环境了，具体可以问AI。
 然后这些配置基本上都是我和AI一起解决的，然后也顺便让AI来总结一下：
 
 “叠”:
-![alt text](image-1.png)
+![alt text](/images/blogs/关于ORBBEC%20Astra%20调试了半天的这件事/image-1.png)
 
-![alt text](image-2.png)
+![alt text](/images/blogs/关于ORBBEC%20Astra%20调试了半天的这件事/image-2.png)
 然后如果运行完ros2 launch openni2_camera camera_only.launch.py，开启另外一个终端窗口的话，运行ros2 topic list 应该会显示上面这张图片的样子
 
 对了，每次启动后需要检查一下usbipd list,看看有没有连上，如果是shared的话，需要用usbipd attach --wsl --busid <your-busid>

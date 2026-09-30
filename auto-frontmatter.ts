@@ -8,11 +8,13 @@
  * title / description 其实不用我们管：Nuxt Content 自己会从正文里抽
  * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的四件事：
  *   1. date
- *   2. 把已经被抽成 title / description 的那两段从正文里删掉，
+ *   2. description 兜底：`# 标题` 后面没有段落时（比如直接跟了个 `## 小节`），
+ *      用正文里出现的第一段当摘要
+ *   3. 把已经变成 title / description 的那两段从正文里删掉，
  *      否则标题和第一段会在页面上出现两遍
- *   3. 把正文里的标题整体降一级，
+ *   4. 把正文里的标题整体降一级，
  *      否则老文章里用 `#` 分的节会变成跟文章大标题一样的 h1
- *   4. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+ *   5. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
  */
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
@@ -169,8 +171,21 @@ export function applyAutoFrontmatter(
   const nodes = body.value
   let eaten = 0
 
-  // 正文开头的 h1 已经被当成标题了
-  if (Array.isArray(nodes[0]) && nodes[0][0] === 'h1') eaten = 1
+  // 正文开头的 h1 **就是**被当成文章标题的那一行时，从正文里删掉 ——
+  // 它已经在页面上以文章大标题的形式出现了，留着会显示两遍。
+  //
+  // 为什么要比对文字、而不是看到 h1 就删：
+  // 老文章常常第一行是 `# 前言` 这种小节名，文章本身叫别的名字。
+  // 这种情况你得在 frontmatter 里写 `title: 真正的标题` 盖掉它，
+  // 盖掉之后这个 h1 就不是标题了，是正文里的小节，得留着
+  // （下面第 ④ 步会把它降成二级标题）。
+  if (
+    Array.isArray(nodes[0])
+    && nodes[0][0] === 'h1'
+    && nodeText(nodes[0]).trim() === String(content.title ?? '').trim()
+  ) {
+    eaten = 1
+  }
 
   // 紧跟着的那一段，如果就是 description，也已经被当成摘要了
   const next = nodes[eaten]
@@ -185,11 +200,22 @@ export function applyAutoFrontmatter(
 
   if (eaten > 0) body.value = nodes.slice(eaten)
 
-  // ④ 正文标题整体降一级（大标题已经占了 h1）
+  // ④ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
+  //    例如标题后面直接跟 `## 一、xxx`，contentHeading 就什么都抽不到，
+  //    卡片上和 <meta name="description"> 里会是空的。
+  if (POST_COLLECTIONS.includes(collectionName) && !content.description) {
+    const firstP = (body.value as unknown[]).find(
+      (n): n is unknown[] => Array.isArray(n) && n[0] === 'p',
+    )
+    const text = firstP ? nodeText(firstP).trim() : ''
+    if (text) content.description = text
+  }
+
+  // ⑤ 正文标题整体降一级（大标题已经占了 h1）
   if (POST_COLLECTIONS.includes(collectionName)) {
     shiftHeadings((body.value ?? nodes) as unknown[])
 
-    // ⑤ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+    // ⑥ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
     if (typeof content.path === 'string') content.path = shortenPath(content.path)
   }
 }
