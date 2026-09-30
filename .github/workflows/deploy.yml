@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+# 什么时候跑：
+#   1. push 到 main（或 master）分支
+#   2. 在 Actions 页面手动点 "Run workflow"
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+# 同一时间只允许一个部署。新的 push 会取消掉还在排队/运行中的旧任务，
+# 避免两个构建抢着往 Pages 上写。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+# GITHUB_TOKEN 的权限。deploy-pages 靠 id-token 做 OIDC 认证，
+# 不需要你自己配任何 Secret。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 用 npm ci 而不是 npm install：严格按 package-lock.json 装，
+      # 保证 CI 装出来的依赖和你本地完全一致。
+      - name: 安装依赖
+        run: npm ci
+
+      # 读取仓库的 Pages 配置，得到站点所在的路径。
+      #   用户站（<用户名>.github.io）→ base_path 是空字符串
+      #   项目站（任意仓库名）        → base_path 是 /<仓库名>
+      # enablement: true 会在 Pages 还没启用时自动启用（首次部署省事）
+      - name: 读取 Pages 配置
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # 关键：GitHub Pages 是纯静态托管，没有 Node 服务，
+      # 所以这里必须是 generate（构建时把每个页面渲染成 HTML），
+      # 不能用 build（那产出的是需要跑 Node 的服务端）。
+      - name: 生成静态站点
+        run: npm run generate
+        env:
+          # 拼成 /my-blog/ 或 /，nuxt.config.ts 会读它
+          NUXT_APP_BASE_URL: ${{ steps.pages.outputs.base_path }}/
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .output/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
