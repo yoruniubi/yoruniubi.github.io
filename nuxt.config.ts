@@ -77,7 +77,7 @@ export default defineNuxtConfig({
     baseURL,
     head: {
       htmlAttrs: { lang: 'zh-CN' },
-      title: 'Frankxyh的个人博客',
+      title: 'Frankxyh\'s_Blog',
       meta: [
         { name: 'description', content: '个人博客。生活不顺，但明天会更好。' },
       ],
