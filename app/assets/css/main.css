@@ -1,0 +1,384 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── 令牌 → Tailwind 工具类 ───────────────────── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-erased: var(--erased);
+  --color-paper: var(--paper);
+  --color-rule: var(--rule);
+  --color-marker: var(--marker);
+  --color-on-marker: var(--on-marker);
+}
+
+/* ── 字：标题用衬线，正文用 Newsreader，数据用等宽 ── */
+@theme {
+  --font-display: "Fraunces", "Noto Serif SC Variable", "Songti SC", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --font-body: "Newsreader", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", monospace;
+}
+
+/* ── 字号刻度：全站每个字多大，都由这张表决定 ────
+ * 想整体调大 / 调小，只改这里。
+ * 用法和 Tailwind 自带的一样：class="text-note"，
+ * 也支持响应式前缀：class="sm:text-title"。
+ * static = 强制输出变量，让下面的 var(--text-*) 一定拿得到值。
+ */
+@theme static {
+  /* 四个常用档：全站文字基本只用这四个 */
+  --text-label: 0.875rem; /* 14px  小标签：日期、眉标、栏目名 */
+  --text-label--line-height: 1.5;
+
+  --text-body: 1.0625rem; /* 17px  正文。摘要 / 导航 / 页脚也用这个 */
+  --text-body--line-height: 1.75;
+
+  --text-title: 1.375rem; /* 22px  卡片标题、小标题 */
+  --text-title--line-height: 1.35;
+
+  --text-heading: 1.875rem; /* 30px  区块标题 */
+  --text-heading--line-height: 1.3;
+
+  /* 眉标 /「现在」这种栏目名。目前只有 .label-caps 用它，
+     比普通小标签大一档 —— 嫌小先改这个数。 */
+  --text-eyebrow: 1.125rem; /* 18px */
+  --text-eyebrow--line-height: 1.4;
+
+  /* 三个大字号，用 clamp 自己跟着屏宽缩放，不再写 sm: 断点 */
+  --text-revise: clamp(1.5rem, 3.6vw, 2.5rem); /* 24 → 40px  刊头那句 */
+  --text-revise--line-height: 1.28;
+
+  --text-display: clamp(2.25rem, 5.2vw, 3.25rem); /* 36 → 52px  文章大标题 */
+  --text-display--line-height: 1.18;
+
+  --text-motto: clamp(2.25rem, 7.4vw, 4.7rem); /* 36 → 75px  首页那句 */
+  --text-motto--line-height: 1.15;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--marker);
+    color: var(--on-marker);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--marker);
+    outline-offset: 3px;
+  }
+}
+
+/* ── 小标签：等宽 + 弱色 ─────────────────────────
+ * 全站「日期 / 栏目名 / 眉标」全用这一组，不再逐处写
+ * font-mono text-[11px] text-erased。改大小请改上面的 --text-label。
+ * 写在 @layer components 里 —— 这一层比工具类低，所以
+ * class="label text-foreground" 里 text-foreground 能盖住它的颜色。
+ */
+@layer components {
+  .label {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
+    color: var(--erased);
+  }
+  /* 日期、计数：字距略拉开 */
+  .label-wide {
+    letter-spacing: 0.05em;
+  }
+  /* 眉标、栏目名：比 .label 大一档 + 全大写 + 大开字距 */
+  .label-caps {
+    font-size: var(--text-eyebrow);
+    line-height: var(--text-eyebrow--line-height);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  /* 顶栏 / 页脚的小方块图标按钮（GitHub、主题切换、回到顶部）
+     对应原来的 grid size-9 place-items-center rounded-md
+     text-erased transition hover:bg-paper hover:text-foreground */
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.375rem;
+    color: var(--erased);
+    transition: color 0.2s ease, background-color 0.2s ease;
+  }
+  .icon-btn:hover {
+    color: var(--foreground);
+    background: var(--paper);
+  }
+}
+
+/* ── 签名元素 1：划掉（过去） ──────────────────── */
+.strike {
+  position: relative;
+  color: var(--erased);
+  white-space: nowrap;
+}
+.strike::after {
+  content: "";
+  position: absolute;
+  left: -0.05em;
+  right: -0.05em;
+  top: 50%;
+  height: 0.055em;
+  margin-top: -0.03em;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: strike-draw 0.5s cubic-bezier(0.22, 0.8, 0.24, 1) 0.45s forwards;
+}
+@keyframes strike-draw {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ── 签名元素 2：荧光笔（留下来的） ─────────────
+ * 用 text-decoration 而不是背景色块：
+ * 下划线的位置由字体自己的度量决定，永远不可能压到字形。
+ * （背景色块的 em 偏移在中文字体上会失准，因为它 ascent 高达 1.16em）
+ */
+.mark,
+.mark-hover {
+  text-decoration-line: underline;
+  text-decoration-color: var(--marker);
+  text-decoration-skip-ink: none;
+  /* 中文字形会 overshoot 到基线下方约 0.07em，所以这个值必须 > 0.07em，
+     否则笔道会压住字底。0.11em ≈ 留着 0.04em 的缝。
+     觉得太贴就加大（0.14em），像边框就减小（0.09em）。 */
+  text-underline-offset: 0.11em;
+}
+
+/* 首次进入：荧光笔落下 */
+.mark {
+  /* 觉得太粗/太细只改这一个数 */
+  text-decoration-thickness: 0.2em;
+  animation: mark-in 0.5s cubic-bezier(0.22, 0.8, 0.24, 1) 0.95s backwards;
+}
+@keyframes mark-in {
+  from {
+    text-decoration-color: transparent;
+    text-decoration-thickness: 0;
+  }
+}
+
+/* 悬停：荧光笔落在那行标题上 */
+.mark-hover {
+  text-decoration-color: transparent;
+  text-decoration-thickness: 0.08em;
+  transition:
+    text-decoration-color 0.3s ease,
+    text-decoration-thickness 0.4s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.group:hover .mark-hover {
+  text-decoration-color: var(--marker);
+  text-decoration-thickness: 0.18em;
+}
+
+/* ── 首页刊头 ─────────────────────────────────── */
+.revise-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.32em;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-revise);
+  line-height: var(--text-revise--line-height);
+  letter-spacing: -0.01em;
+}
+.revise-arrow {
+  width: 0.62em;
+  height: 0.62em;
+  color: var(--erased);
+  transform: translateY(0.04em);
+}
+
+.motto {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-motto);
+  line-height: var(--text-motto--line-height);
+  letter-spacing: -0.025em;
+}
+
+/* ── 卡片 ─────────────────────────────────────── */
+.post-card {
+  display: block;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  transition:
+    border-color 0.3s ease,
+    transform 0.3s cubic-bezier(0.22, 0.8, 0.24, 1),
+    box-shadow 0.3s ease;
+}
+.post-card:hover {
+  border-color: color-mix(in oklab, var(--foreground) 26%, transparent);
+  transform: translateY(-3px);
+  box-shadow: 0 16px 34px -24px rgb(0 0 0 / 0.7);
+}
+
+/* 悬停时标题被「划重点」—— 规则见上方 .mark-hover */
+
+/* ── 导航 ─────────────────────────────────────── */
+.nav-link {
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  color: var(--muted);
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+.nav-link:hover {
+  color: var(--foreground);
+  background: var(--paper);
+}
+.nav-link.router-link-exact-active {
+  color: var(--foreground);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-body);
+  color: var(--erased);
+  transition: color 0.2s ease;
+}
+.back-link:hover {
+  color: var(--foreground);
+}
+
+/* ── 页面切换 ─────────────────────────────────── */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.26s ease, transform 0.26s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ── 正文 ─────────────────────────────────────── */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--erased);
+  --tw-prose-bullets: var(--erased);
+  --tw-prose-hr: var(--rule);
+  --tw-prose-quotes: var(--muted);
+  --tw-prose-quote-borders: var(--marker);
+  --tw-prose-captions: var(--erased);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-bg: var(--paper);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-th-borders: var(--rule);
+  --tw-prose-td-borders: var(--rule);
+
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.9;
+}
+
+.prose :where(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.prose :where(h2) {
+  margin-top: 2.6em;
+  margin-bottom: 1em;
+}
+
+.prose :where(a) {
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  transition: border-color 0.2s ease;
+}
+.prose :where(a):hover {
+  border-bottom-color: var(--foreground);
+}
+
+.prose :where(code):not(:where(pre code)) {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.85em;
+  background: var(--marker);
+  color: var(--on-marker);
+  padding: 0.12em 0.36em;
+  border-radius: 3px;
+}
+.prose :where(code):not(:where(pre code))::before,
+.prose :where(code):not(:where(pre code))::after {
+  content: none;
+}
+
+.prose :where(pre) {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.prose :where(pre code) {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.875rem;
+}
+
+.prose :where(blockquote) {
+  font-style: normal;
+  border-left-width: 2px;
+  quotes: none;
+}
+.prose :where(blockquote p)::before,
+.prose :where(blockquote p)::after {
+  content: none;
+}
+
+.prose :where(img) {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+/* ── 尊重「减少动态效果」 ──────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .strike::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+  .mark {
+    animation: none;
+  }
+  .post-card,
+  .post-card:hover {
+    transform: none;
+    transition: border-color 0.2s ease;
+  }
+  .page-enter-active,
+  .page-leave-active {
+    transition: none;
+  }
+}
