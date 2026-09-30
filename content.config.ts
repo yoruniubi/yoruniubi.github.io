@@ -4,7 +4,10 @@ export default defineContentConfig({
   collections: {
     blogs: defineCollection({
       type: 'page',
-      source: 'blogs/*.md',
+      // `*` 不跨目录，只能匹配 blogs 这一层；
+      // ** 才能递归读到子文件夹里的文章：
+      //   content/blogs/a/b.md  →  /blogs/a/b
+      source: 'blogs/**/*.md',
       // frontmatter 全部可选：
       //   title       不写 → 用正文第一个 `# 标题`（Nuxt Content 自己抽的）
       //   description 不写 → 用 `# 标题` 后面的第一段

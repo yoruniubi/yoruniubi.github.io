@@ -6,10 +6,13 @@
  *   date         不写 → 用 git 里这个文件最后一次被改动的日期
  *
  * title / description 其实不用我们管：Nuxt Content 自己会从正文里抽
- * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的两件事：
+ * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的四件事：
  *   1. date
  *   2. 把已经被抽成 title / description 的那两段从正文里删掉，
  *      否则标题和第一段会在页面上出现两遍
+ *   3. 把正文里的标题整体降一级，
+ *      否则老文章里用 `#` 分的节会变成跟文章大标题一样的 h1
+ *   4. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
  */
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
@@ -17,11 +20,12 @@ import { statSync } from 'node:fs'
 const CONTENT_DIR = 'content'
 
 /**
- * 哪些集合要自动填 date。
- * `pages` 集合（about.md 这种）的表里根本没有 date 列，硬塞会报错。
+ * 哪些集合算「文章」，要自动填 date、要降级正文标题。
+ * `pages` 集合（about.md 这种）的表里根本没有 date 列，硬塞会报错；
+ * 它的正文层级也是手写的，不要去动。
  * 以后加了新的文章集合，把名字往这里加一个就行。
  */
-const DATED_COLLECTIONS = ['blogs']
+const POST_COLLECTIONS = ['blogs']
 
 /**
  * minimark 的节点长这样：`['h2', { id: '小节' }, '小节', ['strong', {}, '粗体']]`
@@ -35,6 +39,31 @@ function nodeText(node: unknown): string {
       Array.isArray(child) ? nodeText(child) : typeof child === 'string' ? child : '',
     )
     .join('')
+}
+
+/** 标题降一级的对照表 */
+const HEADING_SHIFT: Record<string, string> = {
+  h1: 'h2', h2: 'h3', h3: 'h4', h4: 'h5', h5: 'h6', h6: 'h6',
+}
+
+/**
+ * 把一棵 minimark 节点树里的标题整体降一级（h1→h2、h2→h3……）。
+ *
+ * 为什么要降：文章的大标题已经由 title 渲染成 h1 了。
+ * 很多老博文是拿 `#` 一节一节写下来的，不降的话正文里会冒出一堆 h1，
+ * 字号跟文章大标题一样大、层级也跟大标题平级。
+ *
+ * 为什么是「整体」降一级而不是只把 h1 改成 h2：
+ * 老文里 `#` 是节、`##` 是子节，只降 h1 的话节和子节会挤在同一级、
+ * 层级关系就丢了。整体降完还是「节 > 子节」。
+ */
+function shiftHeadings(nodes: unknown[]): void {
+  for (const node of nodes) {
+    if (!Array.isArray(node)) continue
+    const tag = node[0]
+    if (typeof tag === 'string' && HEADING_SHIFT[tag]) node[0] = HEADING_SHIFT[tag]
+    shiftHeadings(node.slice(2)) // 子节点也走一遍（标题里可能套着 strong 之类）
+  }
 }
 
 /** 统一成 content/ 后面的相对路径，这样 git 的输出和文件绝对路径能对上 */
@@ -96,6 +125,26 @@ function dateFromMtime(filePath: string): string | undefined {
   }
 }
 
+/**
+ * 网址去重。
+ *
+ * `content/blogs/某篇/某篇.md` 生成的路径本来是 `/blogs/某篇/某篇`，名字白白重复一遍。
+ * 文件夹名和文件名一模一样时，把最后一段去掉：
+ *   content/blogs/关于自建new-api/关于自建new-api.md  →  /blogs/关于自建new-api
+ *
+ * 用 `index.md` 命名得到的是同一个网址（Nuxt Content 自带的约定），
+ * 两种写法都行，不用刻意改。
+ *
+ * 注意：如果同一个文件夹里同时有 `某篇.md` 和 `index.md`，两个会算出同一个网址，
+ * 那样一篇会盖掉另一篇，只留一个。
+ */
+function shortenPath(path: string): string {
+  const parts = path.split('/')
+  const last = parts[parts.length - 1]
+  if (last && last === parts[parts.length - 2]) return parts.slice(0, -1).join('/') || '/'
+  return path
+}
+
 /** 由 nuxt.config.ts 的 `content:file:afterParse` 钩子调用 */
 export function applyAutoFrontmatter(
   filePath: string,
@@ -103,7 +152,7 @@ export function applyAutoFrontmatter(
   content: Record<string, any>,
 ): void {
   // ① date
-  if (DATED_COLLECTIONS.includes(collectionName) && !content.date) {
+  if (POST_COLLECTIONS.includes(collectionName) && !content.date) {
     content.date = gitDates.get(toContentKey(filePath)) ?? dateFromMtime(filePath)
   }
 
@@ -135,4 +184,12 @@ export function applyAutoFrontmatter(
   }
 
   if (eaten > 0) body.value = nodes.slice(eaten)
+
+  // ④ 正文标题整体降一级（大标题已经占了 h1）
+  if (POST_COLLECTIONS.includes(collectionName)) {
+    shiftHeadings((body.value ?? nodes) as unknown[])
+
+    // ⑤ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+    if (typeof content.path === 'string') content.path = shortenPath(content.path)
+  }
 }

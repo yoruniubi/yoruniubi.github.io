@@ -1,15 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import { applyAutoFrontmatter } from "./auto-frontmatter";
 
-/**
- * 部署到 GitHub Pages 时，站点会放在子路径下（例如 /my-blog/），
- * 所有资源路径必须跟着变，否则 CSS / 字体 / 图标全部 404。
- *
- * 这个值由 .github/workflows/deploy.yml 注入，两种情况都自动适配：
- *   用户站  https://<用户名>.github.io/          →  '/'
- *   项目站  https://<用户名>.github.io/<仓库名>/ →  '/<仓库名>/'
- * 本地开发不设置这个变量，默认 '/'
- */
 const rawBaseURL = process.env.NUXT_APP_BASE_URL || '/'
 const baseURL = rawBaseURL.endsWith('/') ? rawBaseURL : `${rawBaseURL}/`
 
@@ -22,7 +13,6 @@ export default defineNuxtConfig({
     '@fontsource/fraunces/500.css',
     '@fontsource/fraunces/600.css',
     '@fontsource/fraunces/700.css',
-    // 中文衬线（按需子集，浏览器只下用得上的那些切片）
     '@fontsource-variable/noto-serif-sc/index.css',
     '@fontsource/newsreader/400.css',
     '@fontsource/newsreader/500.css',
@@ -32,12 +22,6 @@ export default defineNuxtConfig({
     '~/assets/css/main.css',
   ],
 
-  /**
-   * 中文文件名默认会被 slugify 清空：`关于读研生活.md` 的路径会变成 `/blogs`，
-   * 两篇中文名的文章就互相覆盖了。
-   * 这里把中日韩文字加进「允许保留」的字符集，让文件名原样当网址：
-   *   content/blogs/关于读研生活.md  →  /blogs/关于读研生活
-   */
   content: {
     build: {
       pathMeta: {
