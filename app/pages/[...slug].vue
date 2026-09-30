@@ -62,7 +62,8 @@ const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : ''
 </script>
 
 <template>
-  <article v-if="doc" class="pb-28 pt-14">
+  <!-- pb-28 会跟页脚的 mt 叠成 245px 的空白（pb-28 + footer mt-28 + 段落下边距），收到 pb-16 -->
+  <article v-if="doc" class="pb-16 pt-14">
     <ReadingProgress />
 
     <NuxtLink to="/" class="back-link">
@@ -100,7 +101,7 @@ const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : ''
     <!-- 时间轴：左=较早，右=较新 -->
     <nav
       v-if="timeline?.older || timeline?.newer"
-      class="mt-24 grid gap-8 border-t border-rule pt-7 sm:grid-cols-2"
+      class="mt-16 grid gap-8 border-t border-rule pt-6 sm:grid-cols-2"
     >
       <NuxtLink
         v-if="timeline?.older"

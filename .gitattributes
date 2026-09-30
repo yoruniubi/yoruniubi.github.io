@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────
+# 换行符统一成 LF
+#
+# 为什么需要这个文件：仓库里原本存的是 LF，但 Windows 上的编辑器 /
+# 工具会把工作区的文件写成 CRLF。结果是 `git status` 里总有二十几个
+# 文件显示「被修改」，点进去一看一行都没变，只有换行符不同；
+# 一旦提交，整个文件都算重写，历史就看不出真正改了什么。
+#
+# text=auto ：让 git 自动判断哪些是文本文件
+# eol=lf    ：文本文件在仓库里和工作区里都用 LF，不再自动转 CRLF
+# ─────────────────────────────────────────────────────────────
+* text=auto eol=lf
+
+# 真正的二进制文件，明确标出来，别让 git 去转换它们
+*.ico    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.woff   binary
+*.woff2  binary
+*.sqlite binary
+
+# 万一以后加了 Windows 批处理脚本，它们必须是 CRLF，单独排除
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf

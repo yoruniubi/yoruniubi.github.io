@@ -29,7 +29,8 @@ onBeforeUnmount(() => {
   <div>
     <Masthead />
 
-    <section class="mt-24 sm:mt-28">
+    <!-- 「现在」到「文章」之间。原来是 mt-24/sm:mt-28（桌面端 112px） -->
+    <section class="mt-14 sm:mt-16">
       <div class="flex items-baseline justify-between border-b border-rule pb-3">
         <h1 class="font-display text-heading font-semibold tracking-[-0.01em]">
           文章

@@ -12,7 +12,8 @@ function toTop() {
 </script>
 
 <template>
-  <footer class="mt-28 border-t border-rule">
+  <!-- 跟正文的间距。原来是 mt-28（112px），比正文里任何一处都空 -->
+  <footer class="mt-16 border-t border-rule">
     <div
       class="mx-auto flex max-w-270 flex-col gap-4 px-6 py-10 sm:flex-row sm:items-center sm:justify-between"
     >
