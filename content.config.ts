@@ -5,6 +5,10 @@ export default defineContentConfig({
     blogs: defineCollection({
       type: 'page',
       source: 'blogs/*.md',
+      // frontmatter 全部可选：
+      //   title       不写 → 用正文第一个 `# 标题`（Nuxt Content 自己抽的）
+      //   description 不写 → 用 `# 标题` 后面的第一段
+      //   date        不写 → 用 git 提交日期（见 auto-frontmatter.ts）
       schema: z.object({
         date: z.string().optional(),
         description: z.string().optional(),

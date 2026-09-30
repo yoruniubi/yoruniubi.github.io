@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import { applyAutoFrontmatter } from "./auto-frontmatter";
 
 /**
  * 部署到 GitHub Pages 时，站点会放在子路径下（例如 /my-blog/），
@@ -30,6 +31,32 @@ export default defineNuxtConfig({
     '@fontsource/ibm-plex-mono/500.css',
     '~/assets/css/main.css',
   ],
+
+  /**
+   * 中文文件名默认会被 slugify 清空：`关于读研生活.md` 的路径会变成 `/blogs`，
+   * 两篇中文名的文章就互相覆盖了。
+   * 这里把中日韩文字加进「允许保留」的字符集，让文件名原样当网址：
+   *   content/blogs/关于读研生活.md  →  /blogs/关于读研生活
+   */
+  content: {
+    build: {
+      pathMeta: {
+        slugifyOptions: {
+          remove: /[^\w\s\u4e00-\u9fff\u3400-\u4dbf$*_+~.()'"!\-:@]+/g,
+        },
+      },
+    },
+  },
+
+  hooks: {
+    /**
+     * 写文章只写正文，frontmatter 由 auto-frontmatter.ts 自动补全。
+     * 想改规则（比如换一种日期来源）去改那个文件，不用动这里。
+     */
+    'content:file:afterParse'(ctx) {
+      applyAutoFrontmatter(ctx.file.path, ctx.collection.name, ctx.content)
+    },
+  },
 
   /**
    * GitHub Pages 只能托管静态文件，没有 Node 服务，

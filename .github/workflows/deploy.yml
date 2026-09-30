@@ -27,6 +27,10 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 要完整提交历史：文章的日期是从 git 提交记录里读出来的，
+          # 默认的浅克隆只有 1 个提交，读不到老文章的时间
+          fetch-depth: 0
 
       - name: 安装 Node
         uses: actions/setup-node@v4

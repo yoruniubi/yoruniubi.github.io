@@ -3,27 +3,46 @@ import { ArrowLeft, ArrowRight, Calendar } from 'lucide-vue-next'
 
 const route = useRoute()
 
-const { data: doc } = await useAsyncData(route.path, async () => {
-  return (
-    (await queryCollection('pages').path(route.path).first()) ??
-    (await queryCollection('blogs').path(route.path).first())
-  )
+/**
+ * Vue Router 的 route.path 是百分号编码过的：
+ *   /blogs/%E5%85%B3%E4%BA%8E%E8%AF%BB%E7%A0%94%E7%94%9F%E6%B4%BB
+ * 而数据库里存的是原样路径：
+ *   /blogs/关于读研生活
+ * 中文网址必须解码后再查，否则永远查不到，页面直接 404。
+ * 用 decodeURI 而不是 decodeURIComponent：前者不会把 %2F 变成路径分隔符。
+ */
+const pagePath = decodeURI(route.path)
+
+const { data: doc } = await useAsyncData(pagePath, async () => {
+  const found =
+    (await queryCollection('pages').path(pagePath).first()) ??
+    (await queryCollection('blogs').path(pagePath).first())
+
+  // 404 必须在 handler 里抛，不能写完 useAsyncData 就在外面同步检查 doc.value：
+  // 客户端 hydration 那一刻数据还没到（静态站要从 _payload.json 取），
+  // 在外面检查会把本来正常的页面全部误判成 404。
+  if (!found) {
+    throw createError({ statusCode: 404, statusMessage: '页面不存在', fatal: true })
+  }
+  return found
 })
 
-if (!doc.value) {
-  throw createError({ statusCode: 404, statusMessage: '页面不存在', fatal: true })
-}
+// 每篇文章有自己的标签页标题和搜索摘要
+useSeoMeta({
+  title: () => doc.value?.title ?? undefined,
+  description: () => doc.value?.description ?? undefined,
+})
 
 /** 同一条时间轴上前一篇 / 后一篇（只对文章生效） */
-const { data: timeline } = await useAsyncData(`timeline:${route.path}`, async () => {
-  if (!route.path.startsWith('/blogs/')) return { older: null, newer: null }
+const { data: timeline } = await useAsyncData(`timeline:${pagePath}`, async () => {
+  if (!pagePath.startsWith('/blogs/')) return { older: null, newer: null }
 
   const all = await queryCollection('blogs')
     .order('date', 'ASC')
     .select('path', 'title', 'date')
     .all()
 
-  const i = all.findIndex((p) => p.path === route.path)
+  const i = all.findIndex((p) => p.path === pagePath)
   if (i === -1) return { older: null, newer: null }
 
   return {
