@@ -207,21 +207,40 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 
 ### 6.7 Live2D 小人（首页）
 
-`pages/index.vue` 在 `onMounted` 里往 `<head>` 插一个 `<script>`，拉
-`live2d-widgets@1.0.1` 的 `autoload.js`（就是 stevenjoezhang/live2d-widget 那个独立项目）。
-脚本自己会再取 `waifu.css` / `waifu-tips.js` / `waifu-tips.json` / `live2d.min.js` 和模型。
+`plugins/live2d.client.ts`，一个纯客户端插件。它在水合结束之后（`onNuxtReady`）
+往 `<head>` 插一个 `<script>`，拉 `live2d-widgets@1.0.1` 的 `autoload.js`
+（就是 stevenjoezhang/live2d-widget 那个独立项目）。脚本自己会再取
+`waifu.css` / `waifu-tips.js` / `waifu-tips.json` / `live2d.min.js` 和模型。
+显隐跟着路由走：`watch(() => route.path)` 只判断「是不是首页」。
 
-三条约束是这个脚本自己的脾气，改之前先看一眼：
+为什么是插件、不是组件 —— 三条路都走过：
 
-1. **必须写在 `onMounted` 里** —— 构建期（prerender）没有 `document`。
-2. **必须只注入一次** —— 它的 `initWidget` 没有 `destroy()`，注入两次就是两个小人。
-3. **离开首页只藏、不删** —— 它往 `window` 上挂了一堆 `mousemove` / `click` / `copy`
+1. **它不渲染任何节点**（脚本自己会把 `#waifu` 插到 `<body>` 上）。做成组件的话模板里只剩一句注释，
+   而 Vue 生产构建默认不带注释（`comments: false`）：服务端什么都没渲染、客户端却多渲染一个空片段，
+   水合后 DOM 里多出一个 `<!--]-->`，控制台报「Hydration completed but contains mismatches」。
+   dev 环境注释是保留的，所以开发时完全看不出来。
+2. **更不能用 `.client.vue` 后缀** —— 那会被 Nuxt 包一层 `createClientOnly`，而那一层会手动调 setup、
+   再拿渲染结果当 vnode 读 `.children`；渲染结果是 `null` 时当场抛
+   「Cannot read properties of null (reading 'children')」，整页变 500。
+3. **放进页面组件会丢钩子** —— 原先这段代码在 `pages/index.vue`，结果「切到别的页面再切回来，
+   小人就没了」：页面 setup 里有 `await useAsyncData`，而**在 `await` 之后注册的
+   `onMounted` / `onBeforeUnmount` 在客户端换页时会被 Vue 静默丢弃**（首屏是水合，所以完全
+   看不出来），那次切回来时 setup 跑了、`onMounted` 没跑，于是没人再调用 `applyVisibility()`。
+   同一条坑适用于「`await` 之后注册任何生命周期钩子」。插件只在浏览器里跑一次、
+   没有卸载再挂载这回事，天然绕开。
+
+它自己还有两条脾气：
+
+4. **只能注入一次** —— 它的 `initWidget` 没有 `destroy()`，注入两次就是两个小人。
+   用模块级变量 `injected` 挡（客户端热更新会让插件重跑一遍）。
+5. **离开首页只藏、不删** —— 它往 `window` 上挂了一堆 `mousemove` / `click` / `copy`
    监听且没有解绑接口，把 `#waifu-tips` 删掉之后每次鼠标划过都会抛
-   “Cannot set properties of null”。藏起来则一切照常。
+   “Cannot set properties of null”。藏起来则一切照常（`.waifu-active` 状态还在，
+   回到首页即时恢复、不会重播出场动画）。
 
 首次加载约 0.85MB（`live2d.min.js` 129KB、默认模型 Pio 的贴图 603KB、其余脚本约 74KB），
-之后走浏览器缓存。它也是**全站唯一一个在运行时加载第三方资源**的地方（字体和图标都是
-本地打包的），访客的 IP 会经过 jsDelivr。
+因为挂在水合之后，这 0.85MB 不跟首屏抢带宽，之后走浏览器缓存。它也是**全站唯一一个在运行时
+加载第三方资源**的地方（字体和图标都是本地打包的），访客的 IP 会经过 jsDelivr。
 
 ---
 
