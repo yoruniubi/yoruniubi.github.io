@@ -1,358 +1,284 @@
-# 博客界面设计规范（design.md）
+# 界面设计说明（design.md）
 
-个人技术博客的 UI 设计说明，风格为 **粗线条 + 硬阴影 + 平涂色块**（neo-brutalism）。
-适用技术栈：Nuxt 4 + Nuxt Content + Tailwind CSS v4。
+这套界面**已经实现**，这文档是解释，不是待办清单 —— 想看现在的样子，直接跑 `npm run dev`。
 
-> 配色暂为占位方案，后续会调整。所有颜色都通过语义化变量引用，改色只需要改 `app/theme.ts`，组件代码不用动。
+方向叫「**修订稿**」：深蓝稿纸 · 墨白衬线 · 一支荧光笔。
+全站只有一个暖色，其余是纸、墨、和被划掉的灰。
 
----
-
-## 1. 设计理念
-
-- **活泼，有个性**：不做成"通用模板"的克制风格，用形状和排版制造性格，而不是靠渐变或装饰。
-- **像贴纸和卡牌**：元素带黑色粗边框和不带模糊的硬阴影，标签和小块内容可以略微倾斜。
-- **颜色是点缀，结构是主角**：黑（或浅）边框负责结构，彩色只出现在色块里，且色块上的文字固定用黑色。
-- **内容优先**：装饰只用在首页和列表，文章正文区域保持安静、行宽窄、行高大。
-- **只保留一处常驻动效**：其余动效都是对用户操作的反馈（悬停、按下）。
+> **真源不在这个文件里。**
+> 颜色 → `app/theme.ts`；字号 → `app/assets/css/main.css` 的 `@theme static`；
+> 间距和组件样式 → 同上以及各个 `.vue`。
+> 文档跟代码对不上时，**以代码为准**，并顺手把这里改对。
 
 ---
 
-## 2. 设计令牌（Design Tokens）
+## 1. 为什么是现在这套
 
-### 2.1 颜色
+早先做过一版：极光背景、粒子、自定义光标、跑马灯、装饰性编号。那版被判定为
+「AI 生成感的默认长相」——看起来热闹，但没有一处是**这篇博客自己**的东西，于是全删了。
 
-语义令牌固定，色值可替换。
+现在的语汇只有两条，都是从「生活曲折」这件事里长出来的：
 
-| 令牌 | 用途 | 浅色（占位） | 深色（占位） |
-|---|---|---|---|
-| `background` | 页面背景 | `#fffdf7` | `#1b2236` |
-| `foreground` | 文字、边框、硬阴影 | `#000000` | `#f6f1e6` |
-| `muted-foreground` | 次要文字 | `#575757` | `#aab3c8` |
-| `paper` | 卡片底色 | `#ffffff` | `#263049` |
-| `subtle` | 代码块等浅底 | `#f3efe4` | `#2b3654` |
-| `c1` | 色块 1（黄） | `#ffd23f` | 同左 |
-| `c2` | 色块 2（粉） | `#ff7eb6` | 同左 |
-| `c3` | 色块 3（蓝） | `#5cb8ff` | 同左 |
-| `c4` | 色块 4（绿） | `#7be495` | 同左 |
-| `on` | 色块上的文字 | `#000000` | `#000000` |
+- **划掉 = 过去**（`.strike`）
+- **荧光笔 = 留下来的**（`.mark` / `.mark-hover`）
+
+全站唯一一处把这套语汇讲出来的地方是首页刊头：
+
+```
+想成为  ~~天才~~  →  [全能的人]
+```
+
+纪律（比风格更重要）：
+
+- **只有一个强调色**（`marker`）。想突出什么，就用它；除此之外不许有第二个彩色。
+- 装饰必须有理由。没有理由的渐变、发光、毛玻璃、编号、动效，一律不加。
+- 首页可以张扬（大字号 + 划掉 + 荧光笔），**文章页必须安静**（一屏内不要出现第二个色块）。
+
+---
+
+## 2. 颜色：8 个令牌，其中 7 个是无彩色
+
+| 令牌 | 用途 | 浅色 | 深色（默认） |
+| --- | --- | --- | --- |
+| `background` | 画布底 | `#f5f6f9` | **`#1b2236`** |
+| `foreground` | 正文墨色 | `#161c2c` | `#e9ecf4` |
+| `muted` | 次要文字（摘要、说明） | `#4f5a70` | `#949fb9` |
+| `erased` | 被划掉的、更弱的（日期、图标、标签） | `#98a1b3` | `#6a7691` |
+| `paper` | 卡片 / 内嵌块 / 代码底 | `#ffffff` | `#212a42` |
+| `rule` | 稿纸线：所有 1px 分隔线、边框 | `#dce0e9` | `#2c3956` |
+| `marker` | **荧光笔（全站唯一的暖色）** | `#ffe066` | `#f2cb5b` |
+| `on-marker` | 落在荧光笔上的字色 | `#231d06` | `#231d06` |
 
 规则：
 
-- 彩色 `c1`～`c4` 在深浅模式下**保持相同**，色块上的文字一律用 `on`（黑色）。
-- 避免使用纯黑 `#000` 作为深色模式的页面背景，饱和的色块在纯黑上会显得刺眼。
-- 一个视图里同时出现的彩色不超过 4 种；觉得吵就减少到 2～3 种。
+- 深色模式的底色 `#1b2236` 是**钉死的**，不要换成纯黑 —— 荧光笔在纯黑上会刺眼。
+- 组件里**不许写十六进制色值**，一律用语义类名：`bg-background` `text-muted`
+  `border-rule` `bg-marker` `text-on-marker`。
+- `marker` 只出现在四处：座右铭的荧光笔、`::selection`、卡片悬停的标题、`:focus-visible` 描边。
+  （外加正文引用块左侧那 2px 竖线。）**不要**把它用到行内代码上 —— 那会让全篇到处都是重点，
+  等于没有重点。行内代码用 `paper` 底 + `rule` 描边，跟代码块同一套语汇。
 
-### 2.2 字体
+---
 
-| 角色 | 字体栈 | 说明 |
-|---|---|---|
-| 正文、标题 | `Inter`, `Noto Sans SC`, `PingFang SC`, `Microsoft YaHei`, system-ui | 标题用 800～900 字重 |
-| 等宽 | `Fira Code`, ui-monospace, Consolas | 日期、标签、行内代码、代码块 |
+## 3. 字
 
-- 国内网络下不要依赖 Google Fonts，使用 `@fontsource/inter`、`@fontsource/fira-code` 本地打包。
-- 大标题使用负字距（约 `-0.04em` ～ `-0.06em`）。
+| 角色 | 字体 | 用在哪 |
+| --- | --- | --- |
+| 标题（`font-display`） | Fraunces + Noto Serif SC Variable + 宋体兜底 | 站名、文章标题、座右铭、刊头 |
+| 正文（`font-body`） | Newsreader + 苹方/微软雅黑 | 正文、摘要、导航、页脚 |
+| 数据（`font-mono`） | IBM Plex Mono + 中文兜底 | 日期、栏目名、行内代码、代码块 |
 
-字号层级：
+中文衬线（Noto Serif SC Variable）约 600KB，仍然保留：它是这套「稿纸 + 衬线」观感的一半，
+`font-display: swap` 兜住了首屏。国内不要依赖 Google Fonts，全部本地打包。
 
-| 元素 | 大小 |
-|---|---|
-| 首页大标题 | `clamp(60px, 17vw, 148px)`，字重 900，行高 0.98 |
-| 文章页标题 | `clamp(28px, 6vw, 42px)`，字重 900 |
-| 区块标题 | 32px，字重 900 |
-| 卡片标题 | 20px，字重 800 |
-| 正文 | 17px，行高 1.9～1.95 |
-| 次要文字 | 15px |
-| 标签、日期 | 12～13px，等宽 |
+### 字号刻度（`main.css` 的 `@theme static`）
 
-### 2.3 边框、阴影、圆角
+全站每一个字多大，都由这张表决定。**要整体调大调小，只改这张表**，
+不要回到 `text-[11px]` 那种逐处写死的写法。
 
-| 令牌 | 值 |
-|---|---|
-| `--bw`（边框粗细） | `2.5px` |
-| `--shadow-hard` | `5px 5px 0 var(--foreground)` |
-| `--shadow-hard-sm` | `3px 3px 0 var(--foreground)` |
-| 大卡片圆角 | `12px` |
-| 代码块圆角 | `10px` |
-| 小标签、按钮 | `999px`（全圆角） |
-| 技术栈小牌 | `8px` |
+| 类 | 值 | 用在哪 |
+| --- | --- | --- |
+| `text-label` | 14px | 日期、计数、小标签（配 `.label`） |
+| `text-body` | 17px | 正文、摘要、导航、页脚（也是 `body` 的默认字号） |
+| `text-title` | 22px | 卡片标题、桌面端站名 |
+| `text-heading` | 30px | 区块标题（首页「文章」） |
+| `text-eyebrow` | 18px | 眉标、「现在」这种栏目名（配 `.label-caps`） |
+| `text-revise` | `clamp(1.5rem, 3.6vw, 2.5rem)` | 刊头那句（24 → 40px） |
+| `text-display` | `clamp(2.25rem, 5.2vw, 3.25rem)` | 文章大标题（36 → 52px） |
+| `text-motto` | `clamp(2.25rem, 7.4vw, 4.7rem)` | 首页座右铭（36 → 75px） |
 
-想让页面整体更安静：把 `--bw` 降到 `1.5px`，阴影偏移降到 `3px`。
+后三个用 `clamp()` 自己跟着屏宽缩放，**不再写 `sm:` 断点**。用法跟 Tailwind 自带的一样，
+也支持响应式前缀（`text-body sm:text-title`）。
 
-### 2.4 布局
+---
 
-- 内容最大宽度 `820px`，左右内边距 `22px`，水平居中。
-- 文章正文最大宽度约 `38em`（约 35 个汉字一行）。
-- 区块之间留白：首页 hero 上下 `56px`，区块间 `64px` 以上。
-- 全部左对齐，不使用居中排版（除按钮内文字）。
+## 4. 签名元素
 
-### 2.5 背景
+### 4.1 划掉 —— `.strike`
 
-页面背景带极淡的点阵：
+`::after` 画一条 `0.055em` 高的横线，从左侧 `scaleX(0)` 拉到 1，延迟 0.45s。
+字色降到 `erased`，并强制 `white-space: nowrap`（被划掉的词不能被拆行）。
+
+### 4.2 荧光笔 —— `.mark` / `.mark-hover`
+
+**用 `text-decoration: underline` 实现，不是背景色块。** 这一点是踩坑踩出来的：
+
+- 背景色块想「只盖住下半部分」，得靠 `linear-gradient` 的 em 偏移去猜；
+  中文字体的 ascent 高达 1.16em，`1em` 那个想当然的偏移在中文上必然失准、压住字形。
+- 下划线的位置由**字体自己的度量**决定，永远不可能压到字形。
+
+仍然要注意中文的 overshoot：汉字底部会探到基线下方约 `0.07em`，所以
 
 ```css
-background-image: radial-gradient(
-  color-mix(in srgb, var(--foreground) 16%, transparent) 1px,
-  transparent 1.2px
-);
-background-size: 22px 22px;
+text-underline-offset: 0.11em;   /* 必须 > 0.07em，留 0.04em 的缝 */
+text-decoration-skip-ink: none;  /* 不然「人」「大」这类字会把笔道断开 */
 ```
+
+太贴就加大（0.14em），看着像边框就减小（0.09em）。
+
+两个用法：
+
+| 类 | 行为 |
+| --- | --- |
+| `.mark` | 首次进入就落下（`text-decoration-thickness: 0.2em`，延迟 0.95s） |
+| `.mark-hover` | 平时透明（0.08em），**父元素 `.group:hover`** 时才落下来（0.18em） |
+
+### 4.3 稿纸线 —— `rule`
+
+所有分隔线、卡片边框、代码块边框、引用块、图片边框都是 `1px solid var(--rule)`，
+不要用 `foreground` 去画框（会变成 neo-brutalism 的粗黑边，跟这套观感冲突）。
 
 ---
 
-## 3. 组件规范
+## 5. 版面
 
-### 3.1 顶部导航
+| 项 | 值 |
+| --- | --- |
+| 页面最大宽度 | `max-w-270` = 1080px（页头、页脚、`main` 三处对齐） |
+| 左右内边距 | 桌面 `px-6`，页头在窄屏收到 `px-3` |
+| 文章标题行宽 | `max-w-[22ch]` |
+| 文章摘要 / 引言 | `max-w-[46ch]` |
+| 正文行高 | `1.9`（`.prose`） |
+| 卡片网格 | `grid gap-4 sm:grid-cols-2`（一屏两列，不用侧边栏） |
+| 页头高度 | `h-16`（+1px 下边框） |
 
-- 左：Logo，黄色底、黑边框、硬阴影，旋转 `-2deg`。
-- 右：导航项（首页 / 文章 / 关于）+ 主题切换按钮。
-- 导航项默认无边框，悬停出现边框；**当前页**为粉色实心胶囊 + 黑边框。
-- 主题切换：圆形按钮，绿色底，按下时向右下位移并去掉阴影。
-- 移动端允许换行，不做汉堡菜单（导航项只有三个）。
+**没有左侧栏，没有侧边导航。** 页面结构就是：页头 → 内容 → 页脚。
 
-### 3.2 首页 Hero
+### 留白刻度（都是实测过的值，别随手动）
 
-自上而下：
+| 位置 | 现在 | 之前（太松，已收） |
+| --- | --- | --- |
+| 页头 → 眉标 | 64px | 152px |
+| 座右铭 → 「现在」 | 56 + 20px | 96 + 24px |
+| 「现在」 → 「文章」 | 64px | 112px |
+| 卡片 → 页脚 | 64px | 112px |
+| 正文底 → 页脚 | 141px | 245px |
+| 正文 → 时间轴 | 64px | 96px |
 
-1. 超大标题："想变得**全能**。" 其中"全能"用粉色填充 + 黑色描边 + 硬文字阴影。
-2. 贴纸：黄色底 + 黑边框 + 硬阴影，内容为 motto，旋转 `-3deg`。
-3. 一句话自我介绍，18px，最大宽度 30em。
-4. 技术栈小牌：一排彩色小块，各带不同的小角度旋转（-4° ～ 4°），像一把手牌。
-
-### 3.3 文章卡片（列表项）
-
-- 结构：左侧**日期块**（固定 96px 宽）+ 右侧内容。
-- 日期块：彩色底，内容为大号"日"和小号"年.月"，等宽字体。
-- 四张卡片的日期块依次使用 c1～c4 循环。
-- 右侧：标题（20px / 800）、摘要（次要色）、标签。
-- 卡片本身：`paper` 底色、粗边框、硬阴影。
-- **悬停**：卡片向右下移动 `5px`，阴影消失，模拟被按下。
-- 移动端：日期块改为卡片顶部的一条横向色带。
-
-### 3.4 标签（Tag）
-
-- 等宽字体 12px，全圆角，`2px` 黑边框，彩色底，黑色文字。
-- 同一篇文章中的标签依次使用 c4、c3、c2。
-
-### 3.5 便签（"正在做"区块）
-
-- 蓝色底 + 粗边框 + 硬阴影，整体旋转 `-0.6deg`。
-- 用于首页底部的简短状态说明，不超过两行。
-
-### 3.6 文章页
-
-- **标题块**：粉色底 + 粗边框 + 硬阴影，内含标题和元信息（日期、标签）。
-- 顶部有"← 返回"按钮：黄色底、全圆角、硬阴影。
-- **正文**（`prose`）：
-
-| 元素 | 样式 |
-|---|---|
-| `h2` | 绿色底 + 黑边框 + 硬阴影，旋转 `-1deg`，`inline-block` |
-| 行内 `code` | 黄色底 + 2px 黑边框 + 小圆角，等宽 |
-| 代码块 `pre` | `subtle` 底 + 粗边框 + 硬阴影，横向可滚动 |
-| 引用 `blockquote` | 粗边框，左侧 14px 粉色粗边，20px / 800 |
-| 链接 | 下划线 + 悬停变色（使用 c3 或 foreground） |
-
-正文区域保持克制：一屏内不要出现超过两个装饰性色块。
-
-### 3.7 按钮
-
-- 主要按钮：彩色底 + 粗边框 + `--shadow-hard-sm`，全圆角。
-- **按下（`:active`）**：位移 `3px 3px` 并移除阴影。
-
-### 3.8 页脚
-
-- 顶部一条粗横线，左侧版权，右侧一句 motto。
+教训：`mt-24`（96px）这种大跳跃在一个竖向滚动的长页面里会连成一片真空。
+相邻区块 56～64px 就够，靠 `border-t border-rule` 去分区，而不是靠空白。
 
 ---
 
-## 4. 交互与动效
+## 6. 组件
 
-| 场景 | 行为 |
-|---|---|
-| 卡片悬停 | `transform: translate(5px, 5px)` + 阴影去除，`120ms` |
-| 按钮按下 | 同上，位移 `3px` |
-| 页面常驻动效 | 无（或仅保留一个，如标题末尾的闪烁光标） |
-| `prefers-reduced-motion` | 关闭所有过渡和动画 |
+### 6.1 页头 `AppHeader.vue`
 
-不做：滚动渐入、每个卡片的弹跳入场、视差、渐变流动。
+`sticky top-0 z-30` + `bg-background/85` + `backdrop-blur-md` + 1px 下边框。
 
----
+- 左：站名（`font-display`）。**移动端 17px、桌面端 22px** —— 手机上 22px 会把导航挤变形。
+- 右：`目录` / `关于`（`.nav-link`）+ GitHub 图标按钮 + 主题切换按钮（`.icon-btn`）。
+- 两个防御性写法，别删：
+  - `.nav-link { white-space: nowrap }` —— 中文可以逐字断行，「目录」会被拆成两个竖着的字，
+    看起来像导航变成了竖列。这不是 flex 的问题，是换行规则的问题。
+  - 站名容器 `min-w-0` + 站名 `truncate` —— 屏幕真窄时宁可站名走省略号，也不要挤掉导航。
 
-## 5. 响应式
+### 6.2 首页刊头 `Masthead.vue`
 
-- 断点主要用 `520px`：小于该宽度时，文章卡片改为上下结构，日期块变成顶部色带。
-- 大标题用 `clamp()` 自适应，不写固定断点。
-- 代码块、表格横向滚动，页面本身不出现横向滚动条。
-- 移动端注意安全区：使用 `env(safe-area-inset-*)`。
+自上而下：眉标 `.label-caps`（`个人博客 · 一份还在改的稿子`）→ 刊头 `.revise-line`
+（划掉「天才」→ 荧光笔「全能的人」）→ 座右铭 `<h1 class="motto">` → 一条 `rule` 横线 →
+「现在」在做什么（`<dl>`，左栏 `.label-caps` 固定 5rem，右栏正文）。
 
----
+motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 
-## 6. 无障碍
+### 6.3 文章卡片 `PostCard.vue`
 
-- 键盘焦点必须可见：`outline: 3px solid`（用 c3 或 foreground），偏移 `3px`。
-- 色块上的文字必须是黑色，确保对比度。
-- 主题切换按钮加 `aria-label`。
-- 装饰性元素（如闪烁光标）加 `aria-hidden="true"`。
-- 文章卡片使用真正的 `<a>` / `<NuxtLink>`，不要只给 `div` 绑定点击。
+整个卡片就是一个 `<NuxtLink>`（真链接，不是 `div` + click）。
 
----
+- 结构：标题 + 右上角外链箭头 → 摘要（`line-clamp-2`）→ 日期（`.label`）。
+- 悬停（`.post-card:hover` + `.group:hover`）：标题落荧光笔（`.mark-hover`）、
+  边框提亮到 `color-mix(foreground 26%)`、整体上浮 3px、出现一层很软的阴影。
+  四种反馈**同时**发生，这就是「这个卡片可点」的全部信号 —— 不需要再加别的东西。
 
-## 7. 在 Nuxt + Tailwind v4 中的落地
+### 6.4 阅读进度 `ReadingProgress.client.vue`
 
-### 7.1 文件结构
+`fixed inset-x-0 top-0 z-40 h-0.5`，内部 `bg-marker`，宽度 = 滚动百分比（0.15s 过渡）。
+只在文章页出现。它是全站唯一的常驻动效，也是 `marker` 的合法用法之一。
 
-```
-app/
-├─ theme.ts                 # 颜色令牌（唯一需要改色的地方）
-├─ app.vue                  # 注入主题 CSS 变量
-├─ assets/css/main.css      # Tailwind 配置与自定义工具类
-├─ layouts/default.vue      # 顶部导航 + 页脚
-├─ components/
-│  ├─ AppHeader.vue
-│  ├─ PostCard.vue
-│  ├─ TagChip.vue
-│  └─ StackChip.vue
-└─ pages/
-   ├─ index.vue             # Hero + 最近文章 + 便签
-   └─ posts/
-      ├─ index.vue          # 文章列表
-      └─ [...slug].vue      # 文章详情
-content/posts/*.md
-content.config.ts
-```
+### 6.5 文章页 `pages/[...slug].vue`
 
-### 7.2 `theme.ts`（结构示意）
+返回目录（`.back-link`）→ `<h1 class="text-display">` → 摘要 → 日期（带日历图标）→
+`.prose` 正文 → 时间轴（左「较早 · 日期」，右「较新 · 日期」，两边都写明确日期，
+不只写「上一篇 / 下一篇」）。
 
-```ts
-export const theme = {
-  light: {
-    background: '#fffdf7', foreground: '#000000', 'muted-foreground': '#575757',
-    paper: '#ffffff', subtle: '#f3efe4',
-  },
-  dark: {
-    background: '#1b2236', foreground: '#f6f1e6', 'muted-foreground': '#aab3c8',
-    paper: '#263049', subtle: '#2b3654',
-  },
-  // 彩色在两种模式下相同
-  shared: { c1: '#ffd23f', c2: '#ff7eb6', c3: '#5cb8ff', c4: '#7be495', on: '#000000' },
-} as const
+### 6.6 页脚 `AppFooter.vue`
 
-const toVars = (o: Record<string, string>) =>
-  Object.entries(o).map(([k, v]) => `--${k}:${v};`).join('')
+一条 `rule` 横线；左侧 motto（`font-display`），右侧年份 · 站名 + 回到顶部按钮。
 
-export const themeCss =
-  `:root{${toVars(theme.light)}${toVars(theme.shared)}}` +
-  `.dark{${toVars(theme.dark)}}`
-```
+### 6.7 Live2D 小人（首页）
 
-### 7.3 `main.css`（关键部分）
+`pages/index.vue` 在 `onMounted` 里往 `<head>` 插一个 `<script>`，拉
+`live2d-widgets@1.0.1` 的 `autoload.js`（就是 stevenjoezhang/live2d-widget 那个独立项目）。
+脚本自己会再取 `waifu.css` / `waifu-tips.js` / `waifu-tips.json` / `live2d.min.js` 和模型。
 
-```css
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
-@custom-variant dark (&:where(.dark, .dark *));
+三条约束是这个脚本自己的脾气，改之前先看一眼：
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-paper: var(--paper);
-  --color-subtle: var(--subtle);
-  --color-c1: var(--c1);
-  --color-c2: var(--c2);
-  --color-c3: var(--c3);
-  --color-c4: var(--c4);
-  --color-on: var(--on);
-  --shadow-hard: 5px 5px 0 var(--foreground);
-  --shadow-hard-sm: 3px 3px 0 var(--foreground);
-}
+1. **必须写在 `onMounted` 里** —— 构建期（prerender）没有 `document`。
+2. **必须只注入一次** —— 它的 `initWidget` 没有 `destroy()`，注入两次就是两个小人。
+3. **离开首页只藏、不删** —— 它往 `window` 上挂了一堆 `mousemove` / `click` / `copy`
+   监听且没有解绑接口，把 `#waifu-tips` 删掉之后每次鼠标划过都会抛
+   “Cannot set properties of null”。藏起来则一切照常。
 
-@theme {
-  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "Fira Code", ui-monospace, Consolas, monospace;
-}
-
-@utility border-bold {
-  border: 2.5px solid var(--foreground);
-}
-
-@layer base {
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
-    background-image: radial-gradient(
-      color-mix(in srgb, var(--foreground) 16%, transparent) 1px, transparent 1.2px);
-    background-size: 22px 22px;
-  }
-  ::selection { background: var(--c1); color: #000; }
-}
-```
-
-### 7.4 组件写法示例
-
-文章卡片：
-
-```vue
-<NuxtLink
-  :to="post.path"
-  class="border-bold grid grid-cols-[96px_1fr] overflow-hidden rounded-xl bg-paper shadow-hard
-         transition hover:translate-x-[5px] hover:translate-y-[5px] hover:shadow-none
-         max-[520px]:grid-cols-1"
->
-  <div class="flex flex-col items-center justify-center border-r-[2.5px] border-foreground py-3
-              font-mono text-on" :class="dateBg">
-    <b class="text-3xl">{{ day }}</b>
-    <span class="text-xs">{{ yearMonth }}</span>
-  </div>
-  <div class="px-5 py-4">
-    <h3 class="text-xl font-extrabold">{{ post.title }}</h3>
-    <p class="text-[15px] text-muted-foreground">{{ post.description }}</p>
-  </div>
-</NuxtLink>
-```
-
-`dateBg` 由列表页的下标决定：`['bg-c1', 'bg-c2', 'bg-c3', 'bg-c4'][i % 4]`。
-
-按钮：
-
-```vue
-<button class="border-bold rounded-full bg-c1 px-4 py-0.5 font-bold text-on shadow-hard-sm
-               active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
-```
-
-### 7.5 深浅色
-
-```ts
-// nuxt.config.ts
-modules: ['@nuxt/content', '@nuxtjs/color-mode'],
-colorMode: { classSuffix: '', preference: 'light', fallback: 'light' },
-```
-
-默认浅色，用户手动切换后才进入深色。
+首次加载约 0.85MB（`live2d.min.js` 129KB、默认模型 Pio 的贴图 603KB、其余脚本约 74KB），
+之后走浏览器缓存。它也是**全站唯一一个在运行时加载第三方资源**的地方（字体和图标都是
+本地打包的），访客的 IP 会经过 jsDelivr。
 
 ---
 
-## 8. 该做与不该做
+## 7. 动效
 
-**该做**
+| 场景 | 行为 | 时长 |
+| --- | --- | --- |
+| 划掉 | `scaleX` 0 → 1，延迟 0.45s | 0.5s |
+| 荧光笔落下 | `text-decoration-thickness` 0 → 0.2em + 颜色渐入，延迟 0.95s | 0.5s |
+| 卡片悬停 | 上浮 3px、边框提亮、荧光笔落下 | 0.3s |
+| 页面切换 | 淡入淡出 + 上下 8px 位移（`out-in`） | 0.26s |
+| 阅读进度条 | 宽度跟随滚动 | 0.15s |
 
-- 所有颜色通过语义类名（`bg-c1`、`text-muted-foreground`）使用。
-- 边框、阴影用统一的令牌，保持一致。
-- 彩色块上的文字用黑色。
-- 首页可以张扬，文章页要安静。
+`prefers-reduced-motion: reduce` 下全部关闭（划掉直接显示、荧光笔直接落下、卡片不再位移、
+页面切换不再过渡）。
 
-**不该做**
-
-- 在组件里直接写十六进制色值。
-- 同时使用软阴影（模糊阴影）和硬阴影。
-- 在正文里堆叠多个旋转、彩色的装饰元素。
-- 使用渐变、发光、毛玻璃等与整体风格冲突的效果。
-- 用 `div` + `click` 代替链接。
+**不做**：滚动渐入、视差、跑马灯、渐变流动、装饰性编号（`01 / 02 / 03`）、
+每个元素各自的弹跳入场。
 
 ---
 
-## 9. 后续可调整的部分
+## 8. 深浅色
 
-- **配色**：修改 `theme.ts` 中的 `shared` 和深浅色两组值。
-- **强度**：调整 `--bw`、阴影偏移、旋转角度，控制页面的"吵闹"程度。
-- **字体**：替换 `--font-sans` / `--font-mono`。
-- **彩色数量**：减少到 2～3 种时，把其余卡片日期块和标签改用 `foreground` 或 `paper`。
+- **默认深色**（`#1b2236`），模式存 cookie（`theme`），不是 `@nuxtjs/color-mode`。
+- `app/composables/useTheme.ts` 提供 `useThemeState()`（读写 + 切换）和
+  `useTheme()`（在 `app.vue` 调一次，把 `.dark` 挂到 `<html>` 上）。
+- 模式存 cookie 而不是 localStorage，是为了 **SSR 直出的 HTML 上就带着正确的 class**，
+  首屏不会先亮再暗地闪一下。
+- 令牌注入在 `app/app.vue`：`useHead({ style: [{ innerHTML: themeCss }] })`，
+  输出 `:root{…浅色…}.dark{…深色…}`；`main.css` 用 `@theme inline` 把它们映射成
+  Tailwind 的颜色工具类（`bg-background` 等）。
+
+---
+
+## 9. 无障碍
+
+- 键盘焦点必须可见：`:focus-visible { outline: 2px solid var(--marker); outline-offset: 3px }`。
+- 只有图标的按钮一律带 `aria-label`（GitHub、主题切换、回到顶部）；纯装饰元素带 `aria-hidden`。
+- 荧光笔上的字固定用 `on-marker`（近黑），别用 `foreground`（深浅模式下会变成浅色，看不清）。
+- 卡片、导航、时间轴都用真的 `<NuxtLink>` / `<a>`，不要给 `div` 绑 `click`。
+- 一页只有一个 `<h1>`；正文里的小节标题由 `auto-frontmatter.ts` 在构建时整体降一级。
+
+---
+
+## 10. 想改点什么，去哪改
+
+| 想改什么 | 改哪 |
+| --- | --- |
+| 颜色（两套） | `app/theme.ts` |
+| 字号刻度 | `app/assets/css/main.css` 的 `@theme static` |
+| 划掉 / 荧光笔 / 卡片 / 导航 / 正文排版 | 同上（`.strike` `.mark` `.post-card` `.nav-link` `.prose`） |
+| 留白（`mt-*`、`pb-*`） | 各个 `.vue` 里，注释写了「原来是 xxx」的那些 |
+| 站名、motto、「现在」、GitHub 链接 | `app/app.config.ts` |
+| 页头结构 | `app/components/AppHeader.vue` |
+| 卡片长什么样 | `app/components/PostCard.vue` |
+
+新增样式时：能写成工具类的就写工具类；成套的、要复用 3 次以上的写成
+`@layer components` 里的类（`.label` `.label-wide` `.label-caps` `.icon-btn`）。
+放在 components 层是有意的 —— 这一层比工具类低，所以 `class="label text-foreground"`
+里 `text-foreground` 能盖住它。

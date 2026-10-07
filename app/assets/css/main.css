@@ -242,9 +242,12 @@
 
 /* ── 导航 ─────────────────────────────────────── */
 .nav-link {
-  padding: 0.3rem 0.6rem;
+  /* 横向内边距在窄屏上很贵：导航总宽直接决定站名会不会被挤掉。0.5rem 够用。 */
+  padding: 0.3rem 0.5rem;
   border-radius: 4px;
   color: var(--muted);
+  /* 窄屏下不给换行 —— 中文可以逐字断行，「目录」会被拆成一字一行、变成竖排。 */
+  white-space: nowrap;
   transition: color 0.2s ease, background-color 0.2s ease;
 }
 .nav-link:hover {
