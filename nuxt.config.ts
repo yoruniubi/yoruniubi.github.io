@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import { resolve } from 'node:path'
 import { applyAutoFrontmatter } from "./auto-frontmatter";
 
 const rawBaseURL = process.env.NUXT_APP_BASE_URL || '/'
@@ -50,6 +51,30 @@ export default defineNuxtConfig({
    * 新增文章后必须重新构建（push 到 GitHub 会自动触发 workflow）。
    */
   nitro: {
+    /**
+     * 让跟文章放在一起的图片在 **dev** 下能访问到：
+     *   content/blogs/某篇/image-8.png  →  /images/blogs/某篇/image-8.png
+     *
+     * 正文里写相对地址（`![](image-8.png)`）也能用的另一半在 auto-frontmatter.ts
+     * 里（把相对地址改写成上面这个绝对地址），两边合起来，图片跟 `.md` 放一起就行。
+     *
+     * 这条只管 dev。静态产物（`nuxt generate` → `.output/public`）不吃它：
+     * Nuxt 的构建路径不会调 Nitro 的 copyPublicAssets，产物里的 public/ 是 Vite
+     * 拷 publicDir 拷进去的。所以产物里那份由 `npm run generate` 的 postgenerate
+     * 自动跑 scripts/sync-images.mjs 补上（声明式、钩子两种写法都试过，产物里都没效果）。
+     *
+     * fallthrough 必须写 true：`/images/` 这个前缀现在有两个来源
+     * （public/images/ 里的老图、content/ 里的新图），少了它，
+     * content/ 里找不到的会把 public/ 里的也一起变成 404。
+     */
+    publicAssets: [
+      {
+        baseURL: '/images/',
+        dir: resolve('content'),
+        maxAge: 60 * 60 * 24 * 30, // 30 天
+        fallthrough: true,
+      },
+    ],
     prerender: {
       crawlLinks: true, // 首页链到的每一篇文章都会自动被渲染
       routes: ['/', '/about'],

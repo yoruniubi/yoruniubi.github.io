@@ -6,15 +6,19 @@
  *   date         不写 → 用 git 里这个文件最后一次被改动的日期
  *
  * title / description 其实不用我们管：Nuxt Content 自己会从正文里抽
- * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的四件事：
+ * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的六件事：
  *   1. date
  *   2. description 兜底：`# 标题` 后面没有段落时（比如直接跟了个 `## 小节`），
  *      用正文里出现的第一段当摘要
  *   3. 把已经变成 title / description 的那两段从正文里删掉，
  *      否则标题和第一段会在页面上出现两遍
- *   4. 把正文里的标题整体降一级，
+ *   4. 图片的相对地址改成绝对地址：`![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`
+ *      这样图片跟 `.md` 放在一起就能用，不必再手动搬图片
+ *      （另一半：dev 下由 nuxt.config.ts 的 nitro.publicAssets 供图，
+ *       静态产物由 scripts/sync-images.mjs 在 generate 后自动同步）
+ *   5. 把正文里的标题整体降一级，
  *      否则老文章里用 `#` 分的节会变成跟文章大标题一样的 h1
- *   5. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+ *   6. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
  */
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
@@ -74,6 +78,70 @@ function toContentKey(p: string): string {
   if (s.startsWith(`${CONTENT_DIR}/`)) return s.slice(CONTENT_DIR.length + 1)
   const i = s.lastIndexOf(`/${CONTENT_DIR}/`)
   return i === -1 ? s : s.slice(i + CONTENT_DIR.length + 2)
+}
+
+/**
+ * 正文里的相对图片地址 → `/images/<content 下的相对路径>`。
+ *
+ * 返回 undefined 表示「不用管」：外链、`/images/...` 这种已经是绝对路径的、
+ * 锚点，以及算出跑到 `content/` 外面的地址。
+ *
+ * 为什么不用先检查文件存不存在：`/images/blogs/dir/x.png` 这个网址，
+ * `public/images/blogs/dir/x.png` 和 `content/blogs/dir/x.png` 两边都能指到，
+ * 老图（已经搬到 public 的）和新图（就放在文章旁边）统一用这一个写法。
+ */
+function toImagesUrl(src: string, mdDir: string): string | undefined {
+  // http:// https:// data: # /xxx //cdn...
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(src)) return undefined
+
+  const stack: string[] = []
+  for (const part of `${mdDir}/${src.split(/[?#]/)[0]}`.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      if (stack.length === 0) return undefined // 指到 content/ 外面去了
+      stack.pop()
+      continue
+    }
+    stack.push(part)
+  }
+  if (stack.length === 0) return undefined
+
+  // 空格会让 markdown 断掉，转义一下；中文保持原样更好读
+  return `/images/${stack.map((p) => p.replace(/ /g, '%20')).join('/')}`
+}
+
+/** minimark 里的图片是 `['img', { src, alt }]`；顺手管一下原始 HTML 的 <img src="x.png"> */
+const HTML_SRC = /\b(src|href)\s*=\s*(["'])([^"']+)\2/gi
+
+/** 把整棵树里所有图片的相对地址换成绝对地址（就地改） */
+function rewriteImageSources(nodes: unknown[], mdDir: string): void {
+  for (const node of nodes) {
+    if (!Array.isArray(node)) continue
+
+    const props = node[1]
+    if (node[0] === 'img' && props && typeof props === 'object') {
+      const src = (props as Record<string, unknown>).src
+      if (typeof src === 'string') {
+        const next = toImagesUrl(src, mdDir)
+        if (next) (props as Record<string, unknown>).src = next
+      }
+    }
+
+    // 原始 HTML 节点（有人习惯直接写 `<img src="x.png">`）里的引用也改掉。
+    // 注意得原地改 node[i]，slice 出来的是新数组，改了不生效。
+    if (node[0] === 'html') {
+      for (let i = 2; i < node.length; i++) {
+        const child = node[i]
+        if (typeof child !== 'string') continue
+        node[i] = child.replace(HTML_SRC, (whole, attr: string, quote: string, url: string) => {
+          const next = toImagesUrl(url, mdDir)
+          return next ? `${attr}=${quote}${next}${quote}` : whole
+        })
+      }
+    }
+
+    rewriteImageSources(node.slice(2), mdDir)
+  }
 }
 
 /**
@@ -169,6 +237,11 @@ export function applyAutoFrontmatter(
   if (!body || body.type !== 'minimark' || !Array.isArray(body.value)) return
 
   const nodes = body.value
+
+  // ④ 图片：相对地址 → /images/... （所有集合都适用，about.md 里放图也一样）
+  //    mdDir = 这个 md 在 content/ 下的目录（例如 blogs/关于Win11系统更改用户名）
+  rewriteImageSources(nodes, toContentKey(filePath).split('/').slice(0, -1).join('/'))
+
   let eaten = 0
 
   // 正文开头的 h1 **就是**被当成文章标题的那一行时，从正文里删掉 ——
@@ -178,7 +251,7 @@ export function applyAutoFrontmatter(
   // 老文章常常第一行是 `# 前言` 这种小节名，文章本身叫别的名字。
   // 这种情况你得在 frontmatter 里写 `title: 真正的标题` 盖掉它，
   // 盖掉之后这个 h1 就不是标题了，是正文里的小节，得留着
-  // （下面第 ④ 步会把它降成二级标题）。
+  // （下面第 ⑥ 步会把它降成二级标题）。
   if (
     Array.isArray(nodes[0])
     && nodes[0][0] === 'h1'
@@ -200,7 +273,7 @@ export function applyAutoFrontmatter(
 
   if (eaten > 0) body.value = nodes.slice(eaten)
 
-  // ④ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
+  // ⑤ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
   //    例如标题后面直接跟 `## 一、xxx`，contentHeading 就什么都抽不到，
   //    卡片上和 <meta name="description"> 里会是空的。
   if (POST_COLLECTIONS.includes(collectionName) && !content.description) {
@@ -211,11 +284,11 @@ export function applyAutoFrontmatter(
     if (text) content.description = text
   }
 
-  // ⑤ 正文标题整体降一级（大标题已经占了 h1）
+  // ⑥ 正文标题整体降一级（大标题已经占了 h1）
   if (POST_COLLECTIONS.includes(collectionName)) {
     shiftHeadings((body.value ?? nodes) as unknown[])
 
-    // ⑥ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+    // ⑦ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
     if (typeof content.path === 'string') content.path = shortenPath(content.path)
   }
 }

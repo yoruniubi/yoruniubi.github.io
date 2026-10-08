@@ -32,8 +32,8 @@ app/
 content/
   blogs/                 文章，可以再分子文件夹
   about.md               关于页
-auto-frontmatter.ts      自动补 frontmatter、降级正文标题、缩短网址
-scripts/fix-assets.mjs   把文章旁边的图片搬进 public/
+auto-frontmatter.ts      自动补 frontmatter、降级正文标题、缩短网址、图片相对地址改绝对
+scripts/sync-images.mjs  把 content/ 里跟文章放在一起的图片同步进静态产物（generate 后自动跑）
 design.md                界面设计说明（为什么长这样、颜色和字号的清单）
 ```
 
@@ -155,38 +155,47 @@ title: 关于自建new-api
 
 中文文件名会原样出现在网址里，不用管什么 slug。
 
-### 图片：跑一下 `npm run fix-assets`
+### 图片：什么都不用做
 
-**图片直接放在 `content/` 里是发布不出去的。** `content/` 是给 Nuxt 解析内容的目录，
-里面的图片不会被打包，正文里写 `![](image-8.png)` 本地看着正常、上线就是破图。
+图片直接放在文章旁边就行，跟 `.md` 同一个文件夹：
 
-所以正文旁边配了图之后，跑一次命令，还是比较关键的：
-
-```bash
-npm run fix-assets
+```
+content/blogs/某篇/某篇.md
+content/blogs/某篇/image-8.png
 ```
 
-它会把 `content/` 里被文章引用到的图片搬到 `public/images/`（目录结构和 `content/` 一一对应），
-并把链接改写成绝对路径：
+正文里写相对地址：
 
 ```md
-![](image-8.png)                            <!-- 原本写的 -->
-![](/images/blogs/服务器/image-8.png)       <!-- 脚本改完的 -->
+![](image-8.png)
 ```
 
-可以反复运行，已经搬过的会自动跳过。**每迁移完一批老文章就跑一次。**
+构建时有两步会自动处理，你不需要记任何命令：
 
-想先看它打算改什么、不动文件，加 `--dry`：
+1. `auto-frontmatter.ts` 在解析正文时把相对地址改写成绝对地址：
+   `![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`
+2. `scripts/sync-images.mjs` 把 `content/` 里的图片同构复制到产物里
+   （`npm run generate` 的 `postgenerate` 会自动跑；dev 下由 `nuxt.config.ts` 的
+   `nitro.publicAssets` 直接提供）
+
+两类图片地址因此完全一致，都是 `/images/blogs/某篇/image-8.png`：
+
+- 跟在文章旁边的（自动同步）
+- 早就放在 `public/images/` 里的（Vite 拷 `public/`，一直都能用）
+
+想看看会同步哪些、不动文件：
 
 ```bash
-npm run fix-assets -- --dry
+npm run sync-images -- --dry
 ```
 
-不想用脚本也行：手动把图放进 `public/images/`，正文里写 `/images/xxx.png`。
+> 也完全可以继续手动把图放 `public/images/`、正文里写 `/images/xxx.png` 绝对路径。
+> 两种写法共存，不会打架。
 
 > 顺带一提：网址是 `/blogs/服务器/自建 new-api` 时，相对路径的 `image-8.png` 会解析成
 > `/blogs/服务器/image-8.png`；但如果用了 `index.md`（网址是 `/blogs/服务器`，没有结尾斜杠），
-> 同一个相对路径会解析成 `/blogs/image-8.png`，更糟。所以**图片一律用 `/images/...` 绝对路径**。
+> 同一个相对路径会解析成 `/blogs/image-8.png`，更糟。构建时会把相对地址统一改成 `/images/...`，
+> 所以这个坑不会真的碰到，但自己在别处（比如代码块里）写链接时还是用绝对路径。
 
 ### 在手机上临时写点什么
 
@@ -218,8 +227,8 @@ https://github.com/yoruniubi/yoruniubi.github.io/new/main/content/blogs/
 | 颜色（浅色 / 深色两套） | `app/theme.ts` |
 | 为什么长这样（设计说明、令牌清单、签名元素） | `design.md` |
 | 字号、行高、间距、所有自定义样式 | `app/assets/css/main.css` |
-| frontmatter 自动补全的规则 | `auto-frontmatter.ts` |
-| 图片搬运脚本 | `scripts/fix-assets.mjs` |
+| frontmatter 自动补全、图片相对地址改写 | `auto-frontmatter.ts` |
+| 图片同步脚本（generate 后自动跑） | `scripts/sync-images.mjs` |
 | 图标 | 替换 `public/icon.ico`，然后 `cp public/icon.ico public/favicon.ico` |
 | 顶部导航 | `app/components/AppHeader.vue` |
 | 关于页 | `content/about.md` |
