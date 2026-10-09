@@ -1,7 +1,5 @@
 # Frankxyh 的博客
 
-个人技术博客：**https://yoruniubi.github.io/**
-
 用 Nuxt 4 + Nuxt Content 写内容，Tailwind CSS v4 管样式，构建时 `nuxt generate` 出纯静态
 文件丢到 GitHub Pages —— 没有服务器、没有数据库、没有后台，文章就是仓库里的 Markdown。
 
