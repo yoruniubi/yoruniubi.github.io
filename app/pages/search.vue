@@ -215,30 +215,23 @@ const totalHits = computed(() => results.value.reduce((sum, item) => sum + item.
   -->
   <div class="mx-auto w-full max-w-measure">
     <section class="mt-14 sm:mt-16">
-      <div class="flex items-baseline justify-between border-b border-rule pb-3">
-        <h1 class="font-display text-heading font-semibold tracking-[-0.01em]">
-          搜索
-        </h1>
-        <span class="label label-wide">
-          {{ index.posts.length }} 篇
-        </span>
-      </div>
 
       <!-- 一条线，而不是一个圆角输入框：跟稿纸的规矩一致。
-           聚焦时线变成荧光笔的颜色。 -->
+           聚焦时：线被荧光笔从左往右划过去（只动 transform，不挤动任何东西），
+           放大镜同时从 erased 亮到 marker；光标和选中文字也都是荧光笔色。 -->
       <div
-        class="mt-8 flex items-center gap-3 border-b border-rule pb-1 transition-colors duration-300 focus-within:border-marker"
+        class="group relative mt-8 flex items-center gap-3 border-b border-rule pb-1 transition-colors duration-300 hover:border-foreground/25"
       >
         <SearchIcon
           :size="16"
           :stroke-width="1.75"
-          class="shrink-0 text-erased"
+          class="shrink-0 text-erased transition-colors duration-300 group-focus-within:text-marker"
           aria-hidden="true"
         />
         <input
           v-model="query"
           type="text"
-          class="w-full min-w-0 bg-transparent py-2 text-body text-foreground outline-none placeholder:text-erased"
+          class="w-full min-w-0 bg-transparent py-2 text-body text-foreground caret-marker outline-none selection:bg-marker/30 placeholder:text-erased"
           placeholder="搜正文里的任何一个词，多个词用空格分开"
           aria-label="搜索正文"
           autocomplete="off"
@@ -256,6 +249,33 @@ const totalHits = computed(() => results.value.reduce((sum, item) => sum + item.
         >
           <XIcon :size="16" :stroke-width="1.75" />
         </button>
+
+        <!-- 荧光笔： 1px，从左边划到满宽，盖在那条 rule 上 -->
+        <span
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-marker transition-transform duration-300 ease-out group-focus-within:scale-x-100"
+        />
+      </div>
+
+      <!-- 输入框下面这行小字：左边是「现在按什么在搜」，右边是键盘提示。
+           多词时把词一个个列出来，顺手把 AND 这个规则写明白（不用猜）。 -->
+      <div class="mt-3 flex items-baseline justify-between gap-4 label label-wide">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <template v-if="terms.length">
+            <span
+              v-for="term in terms"
+              :key="term"
+              class="border border-rule px-1.5 text-foreground"
+            >{{ term }}</span>
+            <span>{{ terms.length > 1 ? '都要出现' : '子串匹配' }}</span>
+          </template>
+          <span v-else-if="status === 'success'">索引 {{ index.posts.length }} 篇正文</span>
+        </div>
+
+        <p class="hidden shrink-0 items-center gap-1.5 sm:flex">
+          <kbd class="border border-rule px-1.5 text-foreground">Esc</kbd>
+          <span>清空</span>
+        </p>
       </div>
 
       <p v-if="!terms.length" class="mt-8 text-body text-muted">
