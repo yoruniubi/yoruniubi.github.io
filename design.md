@@ -136,9 +136,10 @@ text-decoration-skip-ink: none;  /* 不然「人」「大」这类字会把笔�
 | --- | --- |
 | 页面最大宽度 | `max-w-270` = 1080px（页头、页脚、`main` 三处对齐） |
 | 左右内边距 | 桌面 `px-6`，页头在窄屏收到 `px-3` |
-| 文章标题行宽 | `max-w-[22ch]` |
+| 正文列宽 | **`max-w-measure` = `--container-measure`（现在 `48rem` = 768px），`mx-auto` 居中**（文章页 / 关于页 / 搜索页共用） |
+| 文章标题行宽 | `max-w-[22ch]`（`ch` 跟自己的字号走，所以 52px 的标题自然换算成更长的行） |
 | 文章摘要 / 引言 | `max-w-[46ch]` |
-| 正文行高 | `1.9`（`.prose`） |
+| 正文行高 | `1.9`（`.prose`），宽度交给外层那一列（`max-width: none` 盖掉 typography 插件的 `65ch`） |
 | 卡片网格 | `grid gap-4 sm:grid-cols-2`（一屏两列，不用侧边栏） |
 | 页头高度 | `h-16`（+1px 下边框） |
 
@@ -167,7 +168,7 @@ text-decoration-skip-ink: none;  /* 不然「人」「大」这类字会把笔�
 `sticky top-0 z-30` + `bg-background/85` + `backdrop-blur-md` + 1px 下边框。
 
 - 左：站名（`font-display`）。**移动端 17px、桌面端 22px** —— 手机上 22px 会把导航挤变形。
-- 右：`目录` / `关于`（`.nav-link`）+ GitHub 图标按钮 + 主题切换按钮（`.icon-btn`）。
+- 右：`目录` / `搜索` / `关于`（`.nav-link`）+ GitHub 图标按钮 + 主题切换按钮（`.icon-btn`）。
 - 两个防御性写法，别删：
   - `.nav-link { white-space: nowrap }` —— 中文可以逐字断行，「目录」会被拆成两个竖着的字，
     看起来像导航变成了竖列。这不是 flex 的问题，是换行规则的问题。
@@ -186,6 +187,8 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 整个卡片就是一个 `<NuxtLink>`（真链接，不是 `div` + click）。
 
 - 结构：标题 + 右上角外链箭头 → 摘要（`line-clamp-2`）→ 日期（`.label`）。
+- 密度：`p-5` 内边距（原来是 `p-6`，一屏两列时块头显得太大）、摘要 `mt-3`、日期 `mt-5`。
+  跟搜索页的结果卡片同一密度 —— 两张卡本来就是同一种观感。
 - 悬停（`.post-card:hover` + `.group:hover`）：标题落荧光笔（`.mark-hover`）、
   边框提亮到 `color-mix(foreground 26%)`、整体上浮 3px、出现一层很软的阴影。
   四种反馈**同时**发生，这就是「这个卡片可点」的全部信号 —— 不需要再加别的东西。
@@ -195,23 +198,62 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 `fixed inset-x-0 top-0 z-40 h-0.5`，内部 `bg-marker`，宽度 = 滚动百分比（0.15s 过渡）。
 只在文章页出现。它是全站唯一的常驻动效，也是 `marker` 的合法用法之一。
 
-### 6.5 文章页 `pages/[...slug].vue`
+### 6.5 文章页 `pages/[...slug].vue`（关于页走同一套）
 
 返回目录（`.back-link`）→ `<h1 class="text-display">` → 摘要 → 日期（带日历图标）→
 `.prose` 正文 → 时间轴（左「较早 · 日期」，右「较新 · 日期」，两边都写明确日期，
 不只写「上一篇 / 下一篇」）。
 
+**外面套一层居中的正文列**（`mx-auto w-full max-w-measure`，直接写在 `<article>` 上；
+`measure` 这个工具类由 main.css 里的 `--container-measure` 生成，现在 `48rem` = 768px）。
+原先它左对齐贴在 1080px 容器左边，右边空出一大块；而左下角正好是 Live2D 小人，
+两头抢位置。居中之后 48rem 的两侧各留 ~130px，宽屏上小人整个落在左侧空白里
+（窗口 ≳ 1310px 就完全不重叠；列越宽这个阈值越大）。
+- 一开始给的是 `40rem`（640px），看着偏窄 —— 用户反馈“文本宽度不够”后提到 48rem。
+  这也是把宽度收到**一个具名令牌**里的原因：想再宽/再窄只改 `--container-measure` 一个数字，
+  文章页和搜索页一起变。
+- 正文实际宽度由这层 `max-w` 定：`.prose` 里写了一句 `max-width: none`，
+  盖掉 typography 插件自带的 `65ch`（约 552px）—— 不然正文比列窄一截、
+  又在列里左对齐，右边那块空白就原封不动地回来了。
+- `ReadingProgress` 拿到了 `<article>` 外面：它是 `fixed` 的、只读 `documentElement`，
+  跟位置无关；这样里层就不用多包一层 div，也不用把整段模板重新缩进。
+- **为什么我们的 `.prose` 盖得住插件**（这里踩过一次坑）：插件那条 `.prose` 落在
+  `@layer utilities` 里，而 main.css 里的 `.prose`（第 304 行起）在**没有 `@layer` 的顶层** ——
+  没进层的规则比任何层都高。所以 `max-width: none`、`font-size: var(--text-body)`（17px）、
+  `line-height: 1.9`、以及那组 `--tw-prose-*` 颜色变量，全部是我们的在生效；
+  插件只提供了被盖掉的默认值（`65ch` / `1rem` / `1.75` / 一套灰）。
+  推论：**别把 `.prose` 整段挪进 `@layer`** —— 挪进去就只剩插件那套默认值了
+  （连正文颜色都会变成插件的灰）。注意 `@layer components` 在 main.css 第 144 行就闭合了，
+  `.post-card`、`.prose` 都在它后面，都是顶层的。
+- 核实办法（不用起 dev、不用构建）：拿 `@tailwindcss/node` 的 `compile()` 把 main.css
+  编译一遍，看每条 `.prose` 规则落在哪一层 —— 两条 `.prose`，一条在 `utilities`（插件的）、
+  一条无层（我们的），就是对的。
+
 ### 6.6 页脚 `AppFooter.vue`
 
 一条 `rule` 横线；左侧 motto（`font-display`），右侧年份 · 站名 + 回到顶部按钮。
 
-### 6.7 Live2D 小人（首页）
+### 6.7 Live2D 小人（全站）
 
 `plugins/live2d.client.ts`，一个纯客户端插件。它在水合结束之后（`onNuxtReady`）
 往 `<head>` 插一个 `<script>`，拉 `live2d-widgets@1.0.1` 的 `autoload.js`
 （就是 stevenjoezhang/live2d-widget 那个独立项目）。脚本自己会再取
 `waifu.css` / `waifu-tips.js` / `waifu-tips.json` / `live2d.min.js` 和模型。
-显隐跟着路由走：`watch(() => route.path)` 只判断「是不是首页」。
+显隐只看屏幕宽不宽（`roomForWidget()`）：`window.innerWidth` 和 `screen.width` 都得 ≥ 768。
+**早先它只在首页出现、靠 `watch(route.path)` 收起**，后来改成每页都有 —— 那套路由逻辑就删了，
+少两个活动部件。手机上 250px 宽的小人会把正文盖住，而且手机上一行 JS 都不下载，省 0.85MB。
+原版 `autoload.js` 里本来就有 `screen.width >= 768` 那道判断（我们的动态加载版本一开始把它丢了），
+补回来顺手还有两个好处：手机 250px 宽的小人会把正文盖住；手机上一行 JS 都不下载，省 0.85MB。
+两个条件都看是因为它们各管一种情况 —— 手机横屏时 `innerWidth` 会变宽，但那还是块小屏幕；
+桌面端把窗口拖成窄条时 `screen.width` 很大，但小人同样会盖住正文。
+窗口拖窄即时藏、再拉宽自己会回来（监听 `resize`，口径跟第 5 条一致：只藏不删）。
+
+**尺寸缩到 90%**（`main.css` 末尾那条 `#waifu { zoom: .9 }`）。它自带的 `waifu.css`
+把 300×300 的身子钉在左下角，窗口窄一点就压到正文。用 `zoom` 而不是 `transform` —— 
+它自己的 `transform: translateY(25px)` 是出场动画，覆盖掉动画就没了；`zoom` 只改尺寸。
+缩的是 `#waifu` 根节点，提示气泡 / 工具图标 / canvas 都是它的子节点，整块一起缩、比例不乱。
+（它自带的 `autoload.js` 里那句 `// if (screen.width < 768) return;` 是被官方**注释掉**的，
+注释里写着“如果担心手机上显示效果不佳可以启用”—— 所以我们插件里那道判断其实是把它接回来。）
 
 为什么是插件、不是组件 —— 三条路都走过：
 
@@ -233,14 +275,54 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 
 4. **只能注入一次** —— 它的 `initWidget` 没有 `destroy()`，注入两次就是两个小人。
    用模块级变量 `injected` 挡（客户端热更新会让插件重跑一遍）。
-5. **离开首页只藏、不删** —— 它往 `window` 上挂了一堆 `mousemove` / `click` / `copy`
+5. **只藏、不删** —— 它往 `window` 上挂了一堆 `mousemove` / `click` / `copy`
    监听且没有解绑接口，把 `#waifu-tips` 删掉之后每次鼠标划过都会抛
    “Cannot set properties of null”。藏起来则一切照常（`.waifu-active` 状态还在，
-   回到首页即时恢复、不会重播出场动画）。
+   即时恢复、不会重播出场动画）。拖窄窗口时也是藏，不是删。（原先离开首页靠这一条收起，
+   现在每页都显示，这条只剩拖窄窗口那一种用途。）
 
 首次加载约 0.85MB（`live2d.min.js` 129KB、默认模型 Pio 的贴图 603KB、其余脚本约 74KB），
 因为挂在水合之后，这 0.85MB 不跟首屏抢带宽，之后走浏览器缓存。它也是**全站唯一一个在运行时
 加载第三方资源**的地方（字体和图标都是本地打包的），访客的 IP 会经过 jsDelivr。
+
+### 6.8 目录页的分类分组（`pages/index.vue`）
+
+首页按分类分段，一段就是一组卡片。
+
+- **分类从哪来**：`content/blogs/` 下面的第一层文件夹名，构建时由 `auto-frontmatter.ts` 写进
+  `category`（`content.config.ts` 里必须声明这个字段，zod 会把没声明的键丢掉）。
+  用文件夹而不是 frontmatter，是因为它**不可能拼错、不用记**，文件树上一眼能看到结构。
+- **分类段不进网址**：`/blogs/开发折腾/某篇` → `/blogs/某篇`。所以改分类名、给文章换分类，
+  已经发出去的链接都不会失效。
+- **顺序**：`app/app.config.ts` 的 `categories` 决定谁在前；没列过的按名字排在后面；
+  没归类的（直接放在 `blogs/` 下）进 `uncategorized`，**永远最后** —— 文件夹名建错时它掉到最底下
+  会被看见，而不是静默消失。
+- **层级**：这一页的 `h1` 是刊头那句 motto，「文章」降级成 `.label-caps` 小字（它只是这一栏的名字，
+  不是章节），**分类才是 `h2`**，卡片标题是 `h3`。一页仍然只有一个 `h1`，分组加多少层都不变。
+- 分组段带 `:id="分类名"`，文章页标题下那颗分类标签就是链到 `/#分类名`；`scroll-mt-20`
+  是为了锚点跳过去时标题不要贴在最上沿。
+
+### 6.9 搜索页（`pages/search.vue`）
+
+搜索页要看起来很轻，它只是“找东西”这件事的一个入口。
+
+- **输入框是一条线，不是一个圆角框**：跟稿纸的规矩一致（全站没有一个输入框形状的东西）。
+  聚焦时线变荧光笔色（`focus-within:border-marker`），跟链接、卡片悬停用的是同一个强调色。
+- **命中用 30% 的荧光笔块**（`<mark class="bg-marker/30 text-foreground">`）：这是荧光笔的第三个
+  用法 —— 划掉是过去，落下是现在（座右铭、悬停），划出命中段是“你要找的那几个字”。
+  仍只有一个强调色，没引入第二种颜色。
+- **结果直接用 `.post-card`**：搜索结果是文章的入口，不是一种新组件；悬停、上浮、标题落下
+  荧光笔的行为跟首页卡片完全一致。但**密度比首页卡片紧**：外层列是 `max-w-measure`（跟文章页同一把尺子）、
+  卡片 `p-5`、每篇只列 `HITS_PER_POST = 2` 处命中、预览窗口 `around = 30` 字。
+  一开始卡片没有宽度限制、直接撑满 1032px，"标题 + 几行预览" 就被拉成一行超长文本了。
+- **层级**：`h1` 是「搜索」，每篇结果的标题是 `h2`，命中所在的小节名用 `.label` 的 `# 小节`，
+  不占标题层级。
+- **索引按需下载**：`server/api/search.json.get.ts` 在构建时导出，页面用 `server: false`
+  的 `useAsyncData` 只在浏览器里取。预渲染的 HTML 里没有索引，也没白白让每个访客都下载它。
+- **`?q=` 写进网址**：刷新、分享、后退都能复原；因此这个页面带 `robots: noindex`，
+  不然搜索引擎会把无穷多个 `?q=` 当独立页面收。
+- **不用 `v-html` 做高亮**：把文字切成 `[普通 | 命中]` 小段后用 `v-for` 渲染，
+  正文里的尖括号就没有机会变成标签。
 
 ---
 
@@ -294,6 +376,8 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 | 划掉 / 荧光笔 / 卡片 / 导航 / 正文排版 | 同上（`.strike` `.mark` `.post-card` `.nav-link` `.prose`） |
 | 留白（`mt-*`、`pb-*`） | 各个 `.vue` 里，注释写了「原来是 xxx」的那些 |
 | 站名、motto、「现在」、GitHub 链接 | `app/app.config.ts` |
+| 分类的顺序、未分类叫什么 | `app/app.config.ts`（分类本身 = 文件夹名） |
+| 搜索的输入框、结果、高亮 | `app/pages/search.vue` |
 | 页头结构 | `app/components/AppHeader.vue` |
 | 卡片长什么样 | `app/components/PostCard.vue` |
 

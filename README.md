@@ -72,8 +72,9 @@ npx serve .output/public
 | --- | --- |
 | `title` | 正文第一个 `# 标题` → 「读研心得」 |
 | `description` | `# 标题` 后面的第一段 → 「关于读研的一些感想。」；标题后面如果没有段落（比如直接跟了个 `## 小节`），就用正文里出现的第一段 |
-| `date` | 这个文件在 git 里最后一次被改动的日期 |
-| 网址 | 文件名：`content/blogs/读研心得.md` → `/blogs/读研心得` |
+| `date` | 这个文件在 git 里最后一次被改动的日期；只改文件名/换文件夹（git 记成「改名」）不算数 |
+| 分类 | 文件所在的文件夹：`content/blogs/生活随想/读研心得.md` → 「生活随想」。直接放在 `blogs/` 下就是「未分类」 |
+| 网址 | 文件名：`content/blogs/生活随想/读研心得.md` → `/blogs/读研心得`（分类那一段不进网址） |
 
 几条规则：
 
@@ -135,18 +136,35 @@ title: 关于自建new-api
 
 所以**迁移老文章时 `#` 照着原样写就行**，不用手动改成 `##`。`content/about.md` 不在这条规则里。
 
-### 用文件夹归档
+### 归类：把文件放进文件夹
 
-`content/blogs/` 下面可以随便建文件夹，会递归读取；网址会尽量短：
+`content/blogs/` 下面的**第一层文件夹就是分类**，首页会按分类分段显示（学习笔记 / 开发折腾 /
+生活随想…）。换分类 = 把文件挪到另一个文件夹，**正文一个字不用改**，图片放在文章旁边一起挪就行。
 
-| 文件 | 生成的网址 |
-| --- | --- |
-| `content/blogs/读研心得.md` | `/blogs/读研心得` |
-| `content/blogs/服务器/自建 new-api.md` | `/blogs/服务器/自建 new-api` |
-| `content/blogs/服务器/服务器.md` | `/blogs/服务器`（文件夹名和文件名一样，自动去重） |
-| `content/blogs/服务器/index.md` | `/blogs/服务器`（`index` 不会出现在网址里） |
+| 文件 | 分类 | 生成的网址 |
+| --- | --- | --- |
+| `content/blogs/生活随想/读研心得.md` | 生活随想 | `/blogs/读研心得` |
+| `content/blogs/开发折腾/服务器/自建 new-api.md` | 开发折腾 | `/blogs/服务器/自建-new-api` |
+| `content/blogs/开发折腾/服务器/服务器.md` | 开发折腾 | `/blogs/服务器`（文件夹名和文件名一样，自动去重） |
+| `content/blogs/开发折腾/服务器/index.md` | 开发折腾 | `/blogs/服务器`（`index` 不会出现在网址里） |
+| `content/blogs/随手记.md` | 未分类 | `/blogs/随手记` |
 
-最后两种写法效果一样，因为配图都在同一个文件夹里、用哪个名字都能用。
+**分类那一段不进网址**（`/blogs/开发折腾/服务器/自建 new-api` → `/blogs/服务器/自建-new-api`），
+所以以后改分类名、给文章换分类，都不会让已经发出去的链接失效。分类只影响首页怎么分组。
+
+想加一个新分类：**建个文件夹就行**，不用改任何代码。想让它在首页按你想要的顺序排，就把名字
+写进 `app/app.config.ts` 的 `categories`：
+
+```ts
+categories: ['学习笔记', '开发折腾', '生活随想'],
+uncategorized: '未分类',
+```
+
+- 写进 `categories` 的 → 按这个顺序排；
+- 没写进去的（新文件夹）→ 排在它们后面，按名字排；
+- 没归类的（直接放在 `blogs/` 下）→ 归到「未分类」，**永远排最后**。
+
+最后这条是有意的：万一文件夹名建错了，你会看见它掉在最底下，而不是整篇不见了。
 
 > 不要在同一个文件夹里同时放 `服务器.md` 和 `index.md` —— 会算出同一个网址，
 > 一篇会把另一篇盖掉。
@@ -176,7 +194,8 @@ content/blogs/某篇/image-8.png
    （`npm run generate` 的 `postgenerate` 会自动跑；dev 下由 `nuxt.config.ts` 的
    `nitro.publicAssets` 直接提供）
 
-两类图片地址因此完全一致，都是 `/images/blogs/某篇/image-8.png`：
+两类图片地址因此完全一致，都是 `/images/blogs/某篇/image-8.png`（文章在分类文件夹里的话，
+地址里会多一段分类：`/images/blogs/开发折腾/某篇/image-8.png`）：
 
 - 跟在文章旁边的（自动同步）
 - 早就放在 `public/images/` 里的（Vite 拷 `public/`，一直都能用）
@@ -190,10 +209,31 @@ npm run sync-images -- --dry
 > 也完全可以继续手动把图放 `public/images/`、正文里写 `/images/xxx.png` 绝对路径。
 > 两种写法共存，不会打架。
 
-> 顺带一提：网址是 `/blogs/服务器/自建 new-api` 时，相对路径的 `image-8.png` 会解析成
-> `/blogs/服务器/image-8.png`；但如果用了 `index.md`（网址是 `/blogs/服务器`，没有结尾斜杠），
-> 同一个相对路径会解析成 `/blogs/image-8.png`，更糟。构建时会把相对地址统一改成 `/images/...`，
-> 所以这个坑不会真的碰到，但自己在别处（比如代码块里）写链接时还是用绝对路径。
+> 顺带一提：网址和文件夹不是一一对应的（分类那一段不进网址），所以别指望相对路径按文件夹解析。
+> 构建时会被统一改写成 `/images/...`，这个坑碰不到；但在代码块、链接之类构建管不到的地方
+> 引用图片时，还是直接写 `/images/...` 绝对路径最保险。
+
+### 搜索
+
+导航里的「搜索」（`/search`）是全站正文搜索，点一下就到。
+
+它的索引是**构建时生成的一个静态文件**（`/api/search.json`），里面是每篇的元信息加上
+正文被按标题切成的段落。所以：
+
+- **能搜正文里任何一句话**，不只是标题；中文按子串匹配，搜「注册表」能搜到「注册表编辑器」；
+- 空格分开的多个词是「全都得出现」（`docker 端口` 只找同时提到这两个词的段落）；
+- **索引只在进搜索页时才下载**（约 25KB gzip），其它页面和首屏完全不受影响；
+- 搜索词会写进地址（`/search?q=注册表`），刷新、分享、后退都能复原；
+- 匹配结果里命中的词用荧光笔块标出来，同时告诉你它落在哪一节。
+
+两个地方别拆：
+
+| 文件 | 干什么 |
+| --- | --- |
+| `server/api/search.json.get.ts` | 构建时把索引导出来（抽正文交给 Nuxt Content 的 `queryCollectionSearchSections`） |
+| `nuxt.config.ts` 的 `nitro.prerender.routes` | 里面必须有 `/search` 和 `/api/search.json` —— 静态产物不会自动发现这个 json，漏了就线上 404 |
+
+改交互、改高亮样式 → `app/pages/search.vue`（匹配和排序逻辑也在这个文件里，一百多行，都带注释）。
 
 ### 在手机上临时写点什么
 
@@ -222,12 +262,16 @@ https://github.com/yoruniubi/yoruniubi.github.io/new/main/content/blogs/
 | 想改什么 | 改哪 |
 | --- | --- |
 | 站名、首页那句 motto、「现在」这一栏、GitHub 链接 | `app/app.config.ts` |
+| 文章归到哪一类、分类的显示顺序 | 把 `.md` 放进 `content/blogs/` 下对应的文件夹；顺序配在 `app/app.config.ts` 的 `categories` |
 | 颜色（浅色 / 深色两套） | `app/theme.ts` |
 | 为什么长这样（设计说明、令牌清单、签名元素） | `design.md` |
 | 字号、行高、间距、所有自定义样式 | `app/assets/css/main.css` |
 | frontmatter 自动补全、图片相对地址改写 | `auto-frontmatter.ts` |
 | 图片同步脚本（generate 后自动跑） | `scripts/sync-images.mjs` |
 | 图标 | 替换 `public/icon.ico`，然后 `cp public/icon.ico public/favicon.ico` |
+| 搜索的匹配方式、高亮、结果排序 | `app/pages/search.vue` |
+| 搜索索引里放什么内容 | `server/api/search.json.get.ts` |
+| 每页左下角那个 Live2D 小人（含手机端不放它的宽度阀值） | `app/plugins/live2d.client.ts` |
 | 顶部导航 | `app/components/AppHeader.vue` |
 | 关于页 | `content/about.md` |
 

@@ -58,14 +58,36 @@ const date = computed(() => {
   return typeof d.date === 'string' ? d.date.replaceAll('-', '.') : ''
 })
 
+/** 分类（只有文章有；点它会跳回首页对应的那一组） */
+const category = computed(() => {
+  const d = doc.value
+  if (!d || !('category' in d)) return ''
+  return typeof d.category === 'string' ? d.category : ''
+})
+
 const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : '')
 </script>
 
 <template>
-  <!-- pb-28 会跟页脚的 mt 叠成 245px 的空白（pb-28 + footer mt-28 + 段落下边距），收到 pb-16 -->
-  <article v-if="doc" class="pb-16 pt-14">
-    <ReadingProgress />
+  <ReadingProgress />
 
+  <!--
+    正文列：居中 + 固定行宽。宽度 = `max-w-measure`，
+    也就是 main.css 里的 `--container-measure`（现在 48rem = 768px，
+    17px 字号下约一行 45 个汉字）—— 想宽一点只改那一个数字。
+
+    以前正文是左对齐贴在 1080px 容器左边，右边空一大块；而左下角正好是
+    Live2D 小人，两者抢位置。居中之后，宽屏上小人落在左侧空白里
+    （窗口 ≳ 1310px 就完全不重叠；改宽列宽这个阈值会跟着变大）。
+
+    正文实际宽度由这一列的 max-w 决定 —— typography 插件自带的
+    `max-width: 65ch` 已经在 .prose 里被去掉，见 main.css。
+
+    ReadingProgress 拿到 article 外面：它是 fixed 的（只读 documentElement），
+    跟位置无关，这样里层不用多包一层 div、也不用重新缩进。
+    pb-28 会跟页脚的 mt 叠成 245px 的空白（pb-28 + footer mt-28 + 段落下边距），收到 pb-16。
+  -->
+  <article v-if="doc" class="mx-auto w-full max-w-measure pb-16 pt-14">
     <NuxtLink to="/" class="back-link">
       <ArrowLeft :size="14" :stroke-width="1.75" />
       <span>返回目录</span>
@@ -86,11 +108,21 @@ const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : ''
       </p>
 
       <div
-        v-if="date"
-        class="mt-7 flex items-center gap-2 label label-wide"
+        v-if="category || date"
+        class="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 label label-wide"
       >
-        <Calendar :size="13" :stroke-width="1.75" />
-        <span>{{ date }}</span>
+        <NuxtLink
+          v-if="category"
+          :to="`/#${category}`"
+          class="mark-hover text-muted transition-colors duration-300 hover:text-foreground"
+        >
+          {{ category }}
+        </NuxtLink>
+
+        <span v-if="date" class="flex items-center gap-2">
+          <Calendar :size="13" :stroke-width="1.75" />
+          <span>{{ date }}</span>
+        </span>
       </div>
     </header>
 

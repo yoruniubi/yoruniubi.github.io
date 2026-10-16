@@ -77,7 +77,9 @@ export default defineNuxtConfig({
     ],
     prerender: {
       crawlLinks: true, // 首页链到的每一篇文章都会自动被渲染
-      routes: ['/', '/about'],
+      // /search 是搜索页，它要的那个 /api/search.json 是搜索索引（构建时生成一次），
+      // 两个都得点名写进来：json 不是页面，爬虫不会顺着链接发现它。
+      routes: ['/', '/about', '/search', '/api/search.json'],
       failOnError: true, // 有页面渲染失败就让构建直接挂掉，避免部署出半个站
     },
   },

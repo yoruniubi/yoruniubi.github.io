@@ -3,10 +3,11 @@
  *
  *   title        不写 → 用正文里第一个 `# 标题`
  *   description  不写 → 用 `# 标题` 后面的第一段
- *   date         不写 → 用 git 里这个文件最后一次被改动的日期
+ *   date         不写 → 用 git 里这个文件内容最后一次被改动的日期
+ *   category     不用写 → 用文件所在的文件夹名（见下面第 5 条）
  *
  * title / description 其实不用我们管：Nuxt Content 自己会从正文里抽
- * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的六件事：
+ * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的七件事：
  *   1. date
  *   2. description 兜底：`# 标题` 后面没有段落时（比如直接跟了个 `## 小节`），
  *      用正文里出现的第一段当摘要
@@ -16,9 +17,11 @@
  *      这样图片跟 `.md` 放在一起就能用，不必再手动搬图片
  *      （另一半：dev 下由 nuxt.config.ts 的 nitro.publicAssets 供图，
  *       静态产物由 scripts/sync-images.mjs 在 generate 后自动同步）
- *   5. 把正文里的标题整体降一级，
+ *   5. 分类：从文件夹名推出来（`blogs/开发折腾/某篇.md` → `开发折腾`），
+ *      并把分类段从网址里拿掉，网址保持 /blogs/某篇 不变
+ *   6. 把正文里的标题整体降一级，
  *      否则老文章里用 `#` 分的节会变成跟文章大标题一样的 h1
- *   6. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+ *   7. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
  */
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
@@ -145,43 +148,59 @@ function rewriteImageSources(nodes: unknown[], mdDir: string): void {
 }
 
 /**
- * 一次性把所有文章的 git 日期读出来：
- * key = content/ 后面的相对路径，value = YYYY-MM-DD。
+ * 一篇文章的「内容日期」。
  *
- * `git log` 是从新到旧的，所以同一个文件第一次遇到的那条就是最新日期。
+ * 为什么一个文件跑一次 `git log --follow`，而不是一次读完所有文件：
+ * 把文章归到分类文件夹里（`blogs/某篇.md` → `blogs/开发折腾/某篇.md`）
+ * 在 git 眼里是一次纯改名，状态是 R100。而日期应该是内容最后一次改动的时间，
+ * 不是搬家的时间。所以这里从新到旧扫，跳过 R100，第一条真正的改动（A/M）就是答案。
+ * 批量 `git log` 做不到这件事 —— 它没办法把改名前后连起来。
  */
-function readGitDates(): Map<string, string> {
-  const dates = new Map<string, string>()
+function readGitDate(key: string): string | undefined {
   try {
     const out = execFileSync(
       'git',
       [
         '-c', 'core.quotepath=false', // 中文文件名不要转义成 \345\205\263
         'log',
-        '--pretty=format:%cI',
-        '--name-only',
-        '--diff-filter=AM', // 只看新增和修改
+        '--follow', // 顺着改名往前找历史
+        '-M', // 开启改名检测，否则看不到 R100
+        '--name-status',
+        '--format=@%cI', // 提交行以 @ 开头，跟下面的状态行区分开
         '--',
-        `${CONTENT_DIR}/`,
+        `${CONTENT_DIR}/${key}`,
       ],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
     )
 
     let current = ''
-    for (const line of out.split('\n')) {
-      const t = line.trim()
-      if (!t) continue
-      if (/^\d{4}-\d{2}-\d{2}T/.test(t)) current = t.slice(0, 10)
-      else if (!dates.has(t)) dates.set(toContentKey(t), current)
+    for (const raw of out.split('\n')) {
+      const line = raw.trim()
+      if (!line) continue
+
+      if (line.startsWith('@')) {
+        current = line.slice(1).trim().slice(0, 10) // YYYY-MM-DD
+        continue
+      }
+      if (!current) continue
+
+      // 状态行，形如 A\t路径 / M\t路径 / R100\t旧路径\t新路径
+      // 只是搬了位置（R100）不算内容改动，继续往前找
+      if (line.split('\t')[0] === 'R100') continue
+      return current
     }
   } catch {
-    // 没有 git、浅克隆、或者还没提交过任何东西：
-    // 不报错，下面用文件修改时间兜底
+    // 没装 git、不是 git 仓库、或者这个文件还没提交过：交给下面的 mtime 兜底
   }
-  return dates
+  return undefined
 }
 
-const gitDates = readGitDates()
+/** 同一个文件只问 git 一次 */
+const gitDateCache = new Map<string, string | undefined>()
+function gitDate(key: string): string | undefined {
+  if (!gitDateCache.has(key)) gitDateCache.set(key, readGitDate(key))
+  return gitDateCache.get(key)
+}
 
 const formatDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -215,6 +234,22 @@ function shortenPath(path: string): string {
   return path
 }
 
+/**
+ * 分类 = `content/blogs/` 下面的第一层文件夹名。
+ *
+ *   content/blogs/开发折腾/某篇.md         → 开发折腾
+ *   content/blogs/开发折腾/某篇/某篇.md    → 开发折腾（文章自己带图时也占一层）
+ *   content/blogs/某篇.md                  → undefined（直接放在 blogs 下，算未分类）
+ *
+ * 所以「归类」就是「把文件放进对应文件夹」，不用写任何 frontmatter，
+ * 也不会因为打错一个字就掉进未分类。
+ * 分组的显示顺序在 app/app.config.ts 的 categories 里配。
+ */
+function deriveCategory(key: string): string | undefined {
+  const parts = key.split('/') // ['blogs', '开发折腾', '某篇.md']
+  return parts.length >= 3 ? parts[1] : undefined
+}
+
 /** 由 nuxt.config.ts 的 `content:file:afterParse` 钩子调用 */
 export function applyAutoFrontmatter(
   filePath: string,
@@ -223,7 +258,8 @@ export function applyAutoFrontmatter(
 ): void {
   // ① date
   if (POST_COLLECTIONS.includes(collectionName) && !content.date) {
-    content.date = gitDates.get(toContentKey(filePath)) ?? dateFromMtime(filePath)
+    const key = toContentKey(filePath)
+    content.date = gitDate(key) ?? dateFromMtime(filePath)
   }
 
   // ② 标题兜底：frontmatter 没写、正文也没有 `# 标题`，就用文件名当标题
@@ -239,7 +275,7 @@ export function applyAutoFrontmatter(
   const nodes = body.value
 
   // ④ 图片：相对地址 → /images/... （所有集合都适用，about.md 里放图也一样）
-  //    mdDir = 这个 md 在 content/ 下的目录（例如 blogs/关于Win11系统更改用户名）
+  //    mdDir = 这个 md 在 content/ 下的目录（例如 blogs/开发折腾/关于Win11系统更改用户名）
   rewriteImageSources(nodes, toContentKey(filePath).split('/').slice(0, -1).join('/'))
 
   let eaten = 0
@@ -251,7 +287,7 @@ export function applyAutoFrontmatter(
   // 老文章常常第一行是 `# 前言` 这种小节名，文章本身叫别的名字。
   // 这种情况你得在 frontmatter 里写 `title: 真正的标题` 盖掉它，
   // 盖掉之后这个 h1 就不是标题了，是正文里的小节，得留着
-  // （下面第 ⑥ 步会把它降成二级标题）。
+  // （下面第 ⑦ 步会把它降成二级标题）。
   if (
     Array.isArray(nodes[0])
     && nodes[0][0] === 'h1'
@@ -273,7 +309,20 @@ export function applyAutoFrontmatter(
 
   if (eaten > 0) body.value = nodes.slice(eaten)
 
-  // ⑤ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
+  // ⑤ 分类：从文件夹推出来，并把分类段从网址里拿掉
+  //    网址保持 /blogs/某篇（不带分类），分类只体现在首页的分组上
+  if (POST_COLLECTIONS.includes(collectionName)) {
+    const category = deriveCategory(toContentKey(filePath))
+    if (category) {
+      content.category = category
+      const parts = String(content.path ?? '').split('/') // ['', 'blogs', '开发折腾', '某篇']
+      if (parts[2] === category) {
+        content.path = [...parts.slice(0, 2), ...parts.slice(3)].join('/')
+      }
+    }
+  }
+
+  // ⑥ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
   //    例如标题后面直接跟 `## 一、xxx`，contentHeading 就什么都抽不到，
   //    卡片上和 <meta name="description"> 里会是空的。
   if (POST_COLLECTIONS.includes(collectionName) && !content.description) {
@@ -284,11 +333,11 @@ export function applyAutoFrontmatter(
     if (text) content.description = text
   }
 
-  // ⑥ 正文标题整体降一级（大标题已经占了 h1）
+  // ⑦ 正文标题整体降一级（大标题已经占了 h1）
   if (POST_COLLECTIONS.includes(collectionName)) {
     shiftHeadings((body.value ?? nodes) as unknown[])
 
-    // ⑦ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+    // ⑧ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
     if (typeof content.path === 'string') content.path = shortenPath(content.path)
   }
 }

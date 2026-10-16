@@ -58,6 +58,22 @@
   --text-motto--line-height: 1.15;
 }
 
+/* ── 版面：正文列宽 ────────────────────────────
+ * 生成 max-w-measure，文章页 / 关于页 / 搜索页共用同一把尺子。
+ * 想宽一点、窄一点，只改下面这一个数（1rem = 16px；正文 17px，
+ * 一行汉字数 ≈ 像素 ÷ 17）：
+ *   40rem = 640px  约 38 汉字／行（起初的值，偏窄）
+ *   44rem = 704px  约 41 汉字
+ *   46rem = 736px  约 43 汉字
+ *   48rem = 768px  约 45 汉字  ← 现在
+ *   52rem = 832px  约 49 汉字（再宽就该考虑分栏，而不是一直拉长一行）
+ * 注意它跟左下角 Live2D 小人的关系：列越宽，小人越早碰到正文
+ * （括号里是“窗口宽到多少才完全不重叠”：40rem → 1180px，48rem → 1310px）。
+ */
+@theme {
+  --container-measure: 48rem;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -306,6 +322,13 @@
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: 1.9;
+
+  /* 行宽不在这里定 —— 由外层那一列（pages/[...slug].vue 的 max-w-[40rem]）定。
+     typography 插件给 .prose 自带了 `max-width: 65ch`（约 552px），必须去掉：
+     否则正文比那一列窄一截、又在列里左对齐，右边就多出一块空白
+     （而左下角正好是 Live2D 小人）。
+     能盖掉它靠的是顺序：@plugin 在第 2 行，这个规则在后面，权重又相同。 */
+  max-width: none;
 }
 
 .prose :where(h1, h2, h3, h4) {
@@ -365,6 +388,15 @@
 .prose :where(img) {
   border: 1px solid var(--rule);
   border-radius: 6px;
+}
+
+#waifu {
+  zoom: 0.8;
+}
+
+/* 收起后留在左下角的那个小圆钮是独立的根节点，跟小人一起缩 */
+#waifu-toggle {
+  zoom: 0.8;
 }
 
 /* ── 尊重「减少动态效果」 ──────────────────────── */

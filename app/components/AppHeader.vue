@@ -22,6 +22,7 @@ const { site } = useAppConfig()
 
       <nav class="flex shrink-0 items-center gap-1">
         <NuxtLink to="/" class="nav-link">目录</NuxtLink>
+        <NuxtLink to="/search" class="nav-link">搜索</NuxtLink>
         <NuxtLink to="/about" class="nav-link">关于</NuxtLink>
         <a
           v-if="site.github"

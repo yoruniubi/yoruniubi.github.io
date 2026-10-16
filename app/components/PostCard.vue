@@ -14,7 +14,7 @@ const date = computed(() => props.post.date?.replaceAll('-', '.') ?? '')
 </script>
 
 <template>
-  <NuxtLink :to="post.path" class="post-card group p-6">
+  <NuxtLink :to="post.path" class="post-card group p-5">
     <div class="flex items-start justify-between gap-5">
       <h3
         class="mark-hover font-display text-title font-semibold tracking-[-0.01em]"
@@ -30,12 +30,12 @@ const date = computed(() => props.post.date?.replaceAll('-', '.') ?? '')
 
     <p
       v-if="post.description"
-      class="mt-4 line-clamp-2 text-body text-muted"
+      class="mt-3 line-clamp-2 text-body text-muted"
     >
       {{ post.description }}
     </p>
 
-    <div v-if="date" class="mt-8 label label-wide">
+    <div v-if="date" class="mt-5 label label-wide">
       {{ date }}
     </div>
   </NuxtLink>
