@@ -328,7 +328,59 @@ Content 客户端库的 `sqlite3.wasm` 和我们的 source map），不是另几
 另：`waifu-tips.json` 里写的是 `textures/default-costume.png`，而实际文件带前缀目录，
 直接拼是 **301**（多一次往返），无害但慢。
 
-### 6.8 目录页的分类分组（`pages/index.vue`）
+### 6.8 换页时那堆 `wasm:` / `_payload.json` 报错 = 关掉 app manifest
+
+**症状**：从文章页回目录页时，Firefox 控制台报一串
+`wasm:https://…/_nuxt/xxx.js line 2 > WebAssembly.Module` + source map 解析失败，
+外加「通过 link preload 预加载的资源 `_payload.json?_b=…` 并未在几秒内使用」。
+
+**根因链**（每一步都在 `node_modules` 里核过）：
+
+| # | 位置 | 发生了什么 |
+| - | ---- | ---------- |
+| 1 | `nuxt/dist/app/nuxt.js:35` | `nuxtApp.static.data` 初始为空，只有 `payload.client.js` 会填 |
+| 2 | `plugins/payload.client.js:26` | 换页时 `const payload = await loadPayload(toURL)` |
+| 3 | `composables/payload.js:134` | `shouldLoadPayload()` 先查 routeRules（我们空的），再查 `_isPrerenderedInManifest()` |
+| 4 | `composables/payload.js:121` | `manifest.prerendered.includes(url)` —— **manifest 里没有 `prerendered`** |
+| 5 | `payload.js:28` → `payload.client.js:27` | `loadPayload` 返回 `null` → `if (!payload) return` → **`static.data` 不填** |
+| 6 | `composables/asyncData.js:415` | 非水合（= 客户端换页）时，默认缓存只读 `static.data[key]` |
+| 7 | 同上 | 没缓存 → `useAsyncData` 的回调**在浏览器里重跑** → `queryCollection('blogs')…` |
+| 8 | `content/dist/runtime/client.js:67` | `if (import.meta.client && window.WebAssembly)` → **走客户端 sqlite wasm** |
+| 9 | `internal/database.client.js:48` | `await import('@sqlite.org/sqlite-wasm')`：845KB 的 wasm + 41KB 的 `sql_dump.txt` |
+
+**为什么 manifest 是空的**：`@nuxt/nitro-server/dist/index.mjs:681` 在 `build:before`
+先写一份**空占位** `JSON.stringify({})`，真正那份（含 `prerendered`）在 `nitro:init` →
+`rollup:before` 里才写（第 710 行）。写最后那份之前若中断，磁盘上就留着 `{}` ——
+在 `.nuxt/manifest/meta/<buildId>.json` 里亲眼见到过 **2 字节的 `{}`**。
+
+**但本质不在于「那次构建没写完」**：`appManifest` 的官方用途只有一条
+（`@nuxt/schema` 原话：*Use app manifests to respect route rules on client-side*）——
+我们这个站的 `routeRules` 是空的，**它一分便宜都没给我们挣，却顺手把 payload 提取毁掉了**。
+
+**修法**（`nuxt.config.ts`）：
+
+```ts
+experimental: { appManifest: false }
+```
+
+关掉后 `#build/nuxt.config.mjs` 里 `appManifest = false` →
+`payload.js:121` 的 `_isPrerenderedInManifest()` 直接 `return false`（早退，不发请求），
+而 `_shouldLoadPrerenderedPayload()` 返回 `undefined` 时会晨到 `payload.js:139` 的
+`if (rules.payload) return true` —— 那条在 `nitro-server` 第 655-657 行给
+**每个带 payload 的路由**（只排除了 `prerender`）都注入了 `routeRules[payloadKey].payload = true`，
+所以每个预渲染页面在客户端都拿到 `shouldLoadPayload === true`。
+
+结果：`static.data` 被正常填上 → `useAsyncData` 命中缓存 → **浏览器里一次查询都不发**，
+wasm / `sql_dump.txt` / `_payload.json` preload 警告一起消失。
+首屏本来就不靠它（`__NUXT_DATA__` 内联），另外 `checkOutdatedBuildInterval`
+随它一起失效（只是 devtools 里的重新部署提醒，无所谓）。
+
+验法（不用跑构建）：拿了 `appManifestTypoXXX` 当错字跑一遍 `npm run typecheck` →
+`exit 2` + `TS2353: … does not exist in type '{ … 50 more … }'`，
+证明这个字段真的被 schema 校验着；改回来后 `exit 0`。
+**注意：改 schema 字段后必须重跑 `nuxt prepare`**，否则类型缓存是旧的。
+
+### 6.9 目录页的分类分组（`pages/index.vue`）
 
 首页按分类分段，一段就是一组卡片。
 
@@ -345,7 +397,7 @@ Content 客户端库的 `sqlite3.wasm` 和我们的 source map），不是另几
 - 分组段带 `:id="分类名"`，文章页标题下那颗分类标签就是链到 `/#分类名`；`scroll-mt-20`
   是为了锚点跳过去时标题不要贴在最上沿。
 
-### 6.9 搜索页（`pages/search.vue`）
+### 6.10 搜索页（`pages/search.vue`）
 
 搜索页要看起来很轻，它只是“找东西”这件事的一个入口。
 

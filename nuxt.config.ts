@@ -9,6 +9,11 @@ export default defineNuxtConfig({
   modules: ['@nuxt/content'],
   devtools: { enabled: true },
   compatibilityDate: '2024-04-03',
+
+  experimental: {
+    appManifest: false,
+  },
+
   css: [
     '@fontsource/fraunces/400.css',
     '@fontsource/fraunces/500.css',
