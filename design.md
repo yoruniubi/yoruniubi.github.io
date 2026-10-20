@@ -285,6 +285,49 @@ motto 和 now 都来自 `app/app.config.ts`，改文案不用碰组件。
 因为挂在水合之后，这 0.85MB 不跟首屏抢带宽，之后走浏览器缓存。它也是**全站唯一一个在运行时
 加载第三方资源**的地方（字体和图标都是本地打包的），访客的 IP 会经过 jsDelivr。
 
+#### 补丁：模型还没加载完就刷 TypeError
+
+控制台里那条 `TypeError: can't access property "hitTest", i.model is null`
+（Firefox：`i.model is null`；Chrome 里同样报）是**上游 1.0.1 的 bug**，不是我们的。
+`dist/chunk/index.js` 里：
+
+```js
+followPointer(e){ … (this.live2DMgr?.model.hitTest("body", x, y)) && dispatch(…) }
+modelTurnHead(e){ … (this.live2DMgr?.model.hitTest("body", x, y)) && dispatch(…) }
+```
+
+判空只判了 `live2DMgr`，**漏了 `model`**，而 `model` 初始就是 `null`；同时它的
+`document.addEventListener('mousemove', …)` 是在模型下载**之前**就挂好的
+（先 `initL2dCanvas()`，再 `await changeModelWithJSON()`）。
+
+这个窗口不短：实测这台上拉 `live2d.min.js`（129KB）要 **6 秒**，加上模型 json / `.moc` / 贴图，
+6～10 秒里每次鼠标移动都会抛一次。模型要是根本没下下来（CDN 连不上 / 请求挂住），就一直抛。
+所以那条 `_payload.json` preload 警告、「scroll-linked」提示、`wasm:`、
+`sourceMap` 那几条都是**同一个时间点**的伴生噪音（Firefox 在那一刻在下载
+Content 客户端库的 `sqlite3.wasm` 和我们的 source map），不是另几个 bug。
+
+我们的 `installGuard()` 抢在它前面拦事件：
+- 在 `document` 上挂 **capture 阶段** 的 `mousemove` 并 `stopPropagation()` ——
+  这样就到不了它挂在冒泡阶段的那个监听（浏览器行为已实测：静态页 + headless Edge 验证过）。
+- `click` / `contextmenu` / `mousewheel` / `touch*` 它都挂在**自己造的 `#live2d` canvas** 上，
+  所以就只挡那个 canvas —— 挡在 `document` 上会把全站链接的点击一起吃掉。
+- 只 `stopPropagation`、不 `preventDefault`，不会弄出「滚不动 / 点不动」。
+- 就绪信号是 `#waifu` 上的 `.waifu-active`：`waifu-tips.js` 里是
+  `await loadModel()` → `registerTools()` → 最后才 `classList.add("waifu-active")`，
+  所以这个类出现时 `model` 一定已经有值。就绪后 **真的 `removeEventListener` 撤掉**，
+  不在 `document` 上留永久监听。
+- 最长挡 20 秒（`GUARD_TIMEOUT`）就撤；如果那时 `#waifu` 在、却没有 `.waifu-active`，
+  说明模型没下下来，就 `console.warn` 一句说明原因 —— 不让人对着满屏 TypeError 猜。
+  （`#waifu` 压根不在是正常情况：用户自己关过小人，24 小时内不再初始化。）
+
+还有一个 **改不了的配置坑**（先记下，别当 bug 查）：`autoload.js` 支持传 `drag:false`，
+但 **`Model` 那一块几乎没有配置项** —— `apiPath` / `cdnPath` / `cubism2Path` / `cubism5Path` /
+`tools` / `logLevel` 就是全部，**没有 `models:`**。模型清单只能来自 `waifuPath` 那个 json
+（它自己会 `s.models` 读）。所以想把「先加载默认模型」换掉，只能自己 host 一份
+`waifu-tips.json`，或者不换 —— 补丁已经把噪声治了，不必动模型源。
+另：`waifu-tips.json` 里写的是 `textures/default-costume.png`，而实际文件带前缀目录，
+直接拼是 **301**（多一次往返），无害但慢。
+
 ### 6.8 目录页的分类分组（`pages/index.vue`）
 
 首页按分类分段，一段就是一组卡片。
