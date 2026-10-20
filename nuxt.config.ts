@@ -10,8 +10,23 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   compatibilityDate: '2024-04-03',
 
+  /**
+   * 换页后加载不出来 / 控制台刷 `wasm:` 报错 —— 已修复，过程见 design.md §6.8。
+   *
+   * 原因：默认 payloadExtraction = true 时，换页要靠 loadPayload() 去拿 _payload.json，
+   * 而它是否该拿又取决于 routeRules / app manifest。生产构建里 Nitro 生成的
+   * payload 规则带一句 `&& nuxt.options.dev` 永不成立，于是只剩 manifest 那条路，
+   * 一旦踩空就 static.data 填不上 → useAsyncData 在浏览器重跑 → 下 845KB sqlite wasm。
+   *
+   * 关掉提取后，__NUXT_DATA__ 直接内联完整数据（首页 81KB，带 14 篇文章），
+   * 换页命中缓存，不查数据库。副作用：首屏 HTML 变大，_payload.json 不再生成。
+   *
+   * 别再试这两种写法（都错过）：
+   *   experimental: { appManifest: false }        // 反了，会让 payload 永不加载
+   *   routeRules: { '/**': { payload: true } }    // 不合法，TS 报 TS2353
+   */
   experimental: {
-    appManifest: false,
+    payloadExtraction: false,
   },
 
   css: [

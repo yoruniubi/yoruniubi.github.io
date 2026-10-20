@@ -328,57 +328,91 @@ Content 客户端库的 `sqlite3.wasm` 和我们的 source map），不是另几
 另：`waifu-tips.json` 里写的是 `textures/default-costume.png`，而实际文件带前缀目录，
 直接拼是 **301**（多一次往返），无害但慢。
 
-### 6.8 换页时那堆 `wasm:` / `_payload.json` 报错 = 关掉 app manifest
+### 6.8 换页后加载不出来 / 控制台一堆 `wasm:` 报错 = `payloadExtraction: false`
 
-**症状**：从文章页回目录页时，Firefox 控制台报一串
+> ⚠️ **这一节我写错过两次，把过程留着，免得下次再踩。**
+>
+> - 第一版说「关掉 `experimental.appManifest` 能修」——**反了**。关掉后
+>   `_isPrerenderedInManifest()` 直接 `catch { return false }`，`shouldLoadPayload()`
+>   **恒为 false**，payload 永不加载，等于把最后一条路堵死。已撤销。
+> - 第二版说「Nitro 生产下不生成 payload 规则是缺陷，手写
+>   `routeRules: { '/**': { payload: true } }` 补上」——**不合法**，
+>   `npm run typecheck` 当场拦：`TS2353: 'payload' does not exist in type …`。
+>    `NitroRouteConfig` 的字段只有 `cache / headers / redirect / prerender / proxy / isr / cors / swr / static`。
+>
+> 两次都是拿**局部窗口**当全局推理。这次的结论是**跑构建实测**出来的。
+
+**症状**：从文章页点回目录页、或文章之间互跳时，页面加载不出来；Firefox 控制台报
 `wasm:https://…/_nuxt/xxx.js line 2 > WebAssembly.Module` + source map 解析失败，
-外加「通过 link preload 预加载的资源 `_payload.json?_b=…` 并未在几秒内使用」。
+外加「预加载了 `_payload.json?_b=…` 但几秒内并未使用」。
+（`安全错误 … file:///` 和 `源代码映射错误 URL constructor` 两条是 DevTools 对 wasm
+伪资源的噪音，与访客无关，修完本节后它们也不再出现。）
 
 **根因链**（每一步都在 `node_modules` 里核过）：
 
 | # | 位置 | 发生了什么 |
 | - | ---- | ---------- |
-| 1 | `nuxt/dist/app/nuxt.js:35` | `nuxtApp.static.data` 初始为空，只有 `payload.client.js` 会填 |
+| 1 | `app/nuxt.js:35` | `nuxtApp.static.data` 初始为空，只有 payload 插件会填 |
 | 2 | `plugins/payload.client.js:26` | 换页时 `const payload = await loadPayload(toURL)` |
-| 3 | `composables/payload.js:134` | `shouldLoadPayload()` 先查 routeRules（我们空的），再查 `_isPrerenderedInManifest()` |
-| 4 | `composables/payload.js:121` | `manifest.prerendered.includes(url)` —— **manifest 里没有 `prerendered`** |
-| 5 | `payload.js:28` → `payload.client.js:27` | `loadPayload` 返回 `null` → `if (!payload) return` → **`static.data` 不填** |
-| 6 | `composables/asyncData.js:415` | 非水合（= 客户端换页）时，默认缓存只读 `static.data[key]` |
-| 7 | 同上 | 没缓存 → `useAsyncData` 的回调**在浏览器里重跑** → `queryCollection('blogs')…` |
-| 8 | `content/dist/runtime/client.js:67` | `if (import.meta.client && window.WebAssembly)` → **走客户端 sqlite wasm** |
-| 9 | `internal/database.client.js:48` | `await import('@sqlite.org/sqlite-wasm')`：845KB 的 wasm + 41KB 的 `sql_dump.txt` |
+| 3 | `composables/payload.js:134` | `shouldLoadPayload()` → 先看 routeRules 有没有 `payload` 规则 |
+| 4 | `@nuxt/nitro-server/dist/index.mjs:645` | 那条规则的生成条件里有 `&& nuxt.options.dev`，**生产下永不成立** |
+| 5 | `composables/payload.js:121` | 退回去问 manifest：`manifest.prerendered.includes(url)` |
+| 6 | `payload.client.js:27` | `if (!payload) return` → **`static.data` 不填** |
+| 7 | `composables/asyncData.js:415` | 客户端换页时默认缓存只读 `static.data[key]` |
+| 8 | 同上 | 没缓存 → `useAsyncData` 回调**在浏览器里重跑** → `queryCollection('blogs')…` |
+| 9 | `content/dist/runtime/client.js:67` | `if (import.meta.client && window.WebAssembly)` → 走客户端 sqlite |
+| 10 | `internal/database.client.js:48` | `await import('@sqlite.org/sqlite-wasm')`：845KB wasm + 41KB `sql_dump.txt` |
 
-**为什么 manifest 是空的**：`@nuxt/nitro-server/dist/index.mjs:681` 在 `build:before`
-先写一份**空占位** `JSON.stringify({})`，真正那份（含 `prerendered`）在 `nitro:init` →
-`rollup:before` 里才写（第 710 行）。写最后那份之前若中断，磁盘上就留着 `{}` ——
-在 `.nuxt/manifest/meta/<buildId>.json` 里亲眼见到过 **2 字节的 `{}`**。
+**关键澄清：manifest 本身没问题。** 健康构建时它长这样（实测）：
 
-**但本质不在于「那次构建没写完」**：`appManifest` 的官方用途只有一条
-（`@nuxt/schema` 原话：*Use app manifests to respect route rules on client-side*）——
-我们这个站的 `routeRules` 是空的，**它一分便宜都没给我们挣，却顺手把 payload 提取毁掉了**。
-
-**修法**（`nuxt.config.ts`）：
-
-```ts
-experimental: { appManifest: false }
+```
+node_modules/.cache/nuxt/.nuxt/manifest/meta/<buildId>.json
+→ 650 字节，{ id, timestamp, prerendered: [17 条] }
+→ 与产物里 17 份 _payload.json 一一对应（一个不多一个不少）
 ```
 
-关掉后 `#build/nuxt.config.mjs` 里 `appManifest = false` →
-`payload.js:121` 的 `_isPrerenderedInManifest()` 直接 `return false`（早退，不发请求），
-而 `_shouldLoadPrerenderedPayload()` 返回 `undefined` 时会晨到 `payload.js:139` 的
-`if (rules.payload) return true` —— 那条在 `nitro-server` 第 655-657 行给
-**每个带 payload 的路由**（只排除了 `prerender`）都注入了 `routeRules[payloadKey].payload = true`，
-所以每个预渲染页面在客户端都拿到 `shouldLoadPayload === true`。
+之前在这个路径上看见的 **2 字节 `{}`** 是**另一次没跑完的构建**留下的残骸，不是常态。
+所以「去查 manifest」这条路本身是通的——它只是**多绕了一圈**，而那一圈在生产站点上
+因为构建/部署时序问题容易踩空。
 
-结果：`static.data` 被正常填上 → `useAsyncData` 命中缓存 → **浏览器里一次查询都不发**，
-wasm / `sql_dump.txt` / `_payload.json` preload 警告一起消失。
-首屏本来就不靠它（`__NUXT_DATA__` 内联），另外 `checkOutdatedBuildInterval`
-随它一起失效（只是 devtools 里的重新部署提醒，无所谓）。
+**修法**（`nuxt.config.ts`，一行）：
 
-验法（不用跑构建）：拿了 `appManifestTypoXXX` 当错字跑一遍 `npm run typecheck` →
-`exit 2` + `TS2353: … does not exist in type '{ … 50 more … }'`，
-证明这个字段真的被 schema 校验着；改回来后 `exit 0`。
-**注意：改 schema 字段后必须重跑 `nuxt prepare`**，否则类型缓存是旧的。
+```ts
+experimental: { payloadExtraction: false }
+```
+
+**三组对照实测**（`npm run generate` 各跑一遍，产物逐项比对）：
+
+| | 默认（`true`） | `'client'` | **`false`** |
+| - | - | - | - |
+| 内联 `__NUXT_DATA__` | 169 B（空壳） | 169 B（空壳） | **81105 B，含完整 `posts`（14 篇）** |
+| `data-src` 外链 payload | 有 | 有 | **无** |
+| 首页 `_payload` preload | 1 条 | 1 条 | **0 条** |
+| 产物里 `_payload.json` | 17 份 | 17 份 | **0 份** |
+| 预渲染路由数 | 39 | 39 | 22（少的 17 = 各页 payload） |
+| 页面数 | 19 | 19 | **19（不变）** |
+
+`'client'` **什么都没变**，不是解药。`false` 才是：`payload.js:15/88` 都是
+`if (import.meta.server || !payloadExtraction) return null`，整条链根本不进——
+不再依赖 manifest、不再依赖 routeRules、`_payload.json` 也不生成。
+`__NUXT_DATA__` 里 `posts` 是个长度 14 的完整数组，所以 `useAsyncData('posts')`
+换页回来时**有完整缓存可用，一次查询都不发**。
+
+**代价**：首屏 HTML 变大（首页内联 81105 B，gzip 后小得多），换掉的是
+每次换页下 845KB wasm 的风险。另外不再有「新部署提醒」（`checkOutdatedBuildInterval` 失效，无所谓）。
+
+**验法**（可复现，不用你手动点）：
+1. `npm run generate` → 看 `Prerendered N routes` 和产物里 `_payload.json` 份数
+2. 逐页检查内联数据：`200.html`/`404.html` 是 60 B 空数据（正常，错误页本来就没数据），
+   其余 17 页都 >1KB
+3. 静态服务起在 8899，页面请求 `/_payload.json` 应返回 **404**
+
+**本地实测的两个坑**（与站点无关，但会绊住验证脚本）：
+- **`node.exe` 不认 `/mnt/c/...` 路径**，spawn Edge 要写 `C:\Program Files (x86)\…`。
+- **本机代理拦 `127.0.0.1`**：`http_proxy=http://127.0.0.1:7897` 且 WinHTTP 层也生效，
+  `node.exe` 访问本地 CDP 端口得到 **HTTP 502 / 0 字节**，且清环境变量也无效。
+  `curl` 必须 `--noproxy '*'`（这也是我们所有 curl 都带这个参数的原因）。
+
 
 ### 6.9 目录页的分类分组（`pages/index.vue`）
 
