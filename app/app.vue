@@ -11,6 +11,6 @@ useHead({
 <template>
   <NuxtRouteAnnouncer />
   <NuxtLayout>
-    <NuxtPage :transition="{ name: 'page', mode: 'out-in' }" />
+    <NuxtPage :transition="{ name: 'page' }" />
   </NuxtLayout>
 </template>

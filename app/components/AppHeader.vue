@@ -7,7 +7,7 @@ const { site } = useAppConfig()
 
 <template>
   <header
-    class="sticky top-0 z-30 border-b border-rule bg-background/85 backdrop-blur-md"
+    class="site-header sticky top-0 z-30 border-b border-rule"
   >
     <div
       class="mx-auto flex h-16 max-w-270 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6"

@@ -217,15 +217,17 @@ const totalHits = computed(() => results.value.reduce((sum, item) => sum + item.
     <section class="mt-14 sm:mt-16">
 
       <!-- 一条线，而不是一个圆角输入框：跟稿纸的规矩一致。
-           聚焦时：线被荧光笔从左往右划过去（只动 transform，不挤动任何东西），
-           放大镜同时从 erased 亮到 marker；光标和选中文字也都是荧光笔色。 -->
+           聚焦时：线被荧光笔从左往右划过去（只动 transform，不挤动任何东西）。
+           香槟金只出现在语义位置（高亮、搜索命中、caret），所以放大镜与
+           下面那条划线不变金，只提到 foreground。光标和选中文字保持 marker
+           —— 那是输入语义，不是装饰。 -->
       <div
         class="group relative mt-8 flex items-center gap-3 border-b border-rule pb-1 transition-colors duration-300 hover:border-foreground/25"
       >
         <SearchIcon
           :size="16"
           :stroke-width="1.75"
-          class="shrink-0 text-erased transition-colors duration-300 group-focus-within:text-marker"
+          class="shrink-0 text-erased transition-colors duration-300 group-focus-within:text-foreground"
           aria-hidden="true"
         />
         <input
@@ -253,7 +255,7 @@ const totalHits = computed(() => results.value.reduce((sum, item) => sum + item.
         <!-- 荧光笔： 1px，从左边划到满宽，盖在那条 rule 上 -->
         <span
           aria-hidden="true"
-          class="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-marker transition-transform duration-300 ease-out group-focus-within:scale-x-100"
+          class="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-foreground/40 transition-transform duration-300 ease-out group-focus-within:scale-x-100"
         />
       </div>
 

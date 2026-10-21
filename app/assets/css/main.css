@@ -13,6 +13,17 @@
   --color-rule: var(--rule);
   --color-marker: var(--marker);
   --color-on-marker: var(--on-marker);
+
+  /* 玻璃与光源 —— 生成 bg-glass / border-glass / text-on-glass 等 */
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+  --color-glass-light: var(--glass-light);
+  --color-glass-shade: var(--glass-shade);
+  --color-on-glass: var(--on-glass);
+  --color-on-glass-muted: var(--on-glass-muted);
+  --color-glow-1: var(--glow-1);
+  --color-glow-2: var(--glow-2);
+  --color-glow-3: var(--glow-3);
 }
 
 /* ── 字：标题用衬线，正文用 Newsreader，数据用等宽 ── */
@@ -75,12 +86,22 @@
 }
 
 @layer base {
+  /*
+   * 背景色必须画在 html 上，不能画在 body 上。
+   *
+   * 原因：光斑 / 颗粒是 z-index 为负的 fixed 元素。body 一旦有不透明背景，
+   * 它的背景永远画在负 z-index 子元素【之上】—— 光斑会被完全盖住，
+   * 尺寸、opacity 都正常，但一点也看不见（踩过的坑）。
+   * html 的背景画在更底层，负 z-index 元素才能浮在它上面。
+   */
   html {
     -webkit-text-size-adjust: 100%;
+    background-color: var(--background);
   }
 
   body {
-    background-color: var(--background);
+    /* 故意不设 background-color：让光斑透上来 */
+    background-color: transparent;
     color: var(--foreground);
     font-family: var(--font-body);
     font-size: var(--text-body);
@@ -141,6 +162,94 @@
     color: var(--foreground);
     background: var(--paper);
   }
+}
+
+/* ════════════════════════════════════════════════════
+   夜航玻璃 —— 光学层
+
+   玻璃拟态的本质是光学，不是配色。真实玻璃没有颜色，
+   它只借用、弯曲、柔化背后的光。所以这里分三层：
+     1. 场景（light wells）  —— 2~3 个大半径柔和光源，玻璃才有东西可折射
+     2. 玻璃（.glass）       —— 白色低透明度 + 高斯模糊 + 饱和度增强
+     3. 颗粒（.grain）       —— 2%~3% 噪点，消除塑料感
+   缺了光源，玻璃就只会变成一块脏兮兮的半透明色块。
+   ════════════════════════════════════════════════════ */
+
+/* ── 1. 场景：光源所在 ──────────────────────────────
+   position: fixed 的三个 radial-gradient，永远铺满视口。
+   半径要够大（40%~60%）—— 小半径会变成「光斑」，大半径才是 light well。
+   想调光的强弱/位置，只改这三个 radial-gradient。
+   z-index 用 0（不是负数）：html 的背景在 0 之下，内容层会在 1 之上，
+   光斑刚好夹在中间。用负数会被 html/body 背景盖住。                     */
+.scene-light {
+  position: fixed;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 52% at 14% 8%, var(--glow-1), transparent 70%),
+    radial-gradient(50% 46% at 90% 22%, var(--glow-2), transparent 68%),
+    radial-gradient(64% 56% at 62% 100%, var(--glow-3), transparent 72%);
+  filter: blur(12px);
+}
+
+/* ── 3. 颗粒：消掉塑料感 ────────────────────────────
+   1.5% 的 feTurbulence 噪点。早先是 2.8%，在深底上显得脏（像屏幕没擦干净）。
+   这个量只是把大色块打碎、让背景不那么「塑料」，看不出颗粒。
+   超过 3% 就是脏。                                        */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── 2. 玻璃面板 ────────────────────────────────────
+   三条铁律：
+     · 无色：只用白色低透明度，颜色全来自背后的光
+     · 受光：顶边 inset 高光 + 底边 inset 暗缘
+       —— 这是真玻璃与「半透明色块」的分界线
+     · 不过 15%：再高就成实心色块，失去玻璃感
+   想整体调厚/调薄，改下面这两个变量。
+   注意：background 简写里混用 var() 和 gradient，浏览器会丢掉后半段，
+   所以这里只用 background-color。                                     */
+.glass {
+  --glass-blur: 48px;
+  --glass-saturate: 180%;
+
+  background-color: var(--glass);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-light),
+    inset 0 -1px 0 var(--glass-shade),
+    0 20px 46px -26px rgb(0 0 0 / 0.85);
+}
+
+/* 玻璃上的字：比普通正文亮一档。模糊会把字压灰，得补回来 */
+.glass,
+.glass h1,
+.glass h2,
+.glass h3 {
+  color: var(--on-glass);
+}
+.glass .text-muted,
+.glass p {
+  color: var(--on-glass-muted);
+}
+
+/* ── 导航栏：不做玻璃 ────────────────────────────────
+   只跟页面同一个底色 + 顶部一道极淡的受光，不模糊、不透明。
+   它必须和场景底色一致（background-color 用同一个 var），
+   否则滚动时会像一块颜色不对的板子盖在光斑上。
+   用 background-image 单独画受光，避免简写丢声明。                  */
+.site-header {
+  background-color: var(--background);
+  background-image: linear-gradient(rgb(255 255 255 / 0.04), transparent 70%);
 }
 
 /* ── 签名元素 1：划掉（过去） ──────────────────── */
@@ -237,21 +346,30 @@
   letter-spacing: -0.025em;
 }
 
-/* ── 卡片 ─────────────────────────────────────── */
+/* ── 卡片 ───────────────────────────────────────
+   卡片是玻璃的第二个用武之地。
+   注意：它用 .glass 提供材质，但圆角和内边距由模板的 Tailwind class 定，
+   所以这里只补 hover 行为。
+   spring easing（带一点过冲）= 玻璃的物理惯性。                      */
+:root {
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .post-card {
   display: block;
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
   transition:
     border-color 0.3s ease,
-    transform 0.3s cubic-bezier(0.22, 0.8, 0.24, 1),
-    box-shadow 0.3s ease;
+    background-color 0.3s ease,
+    transform 0.4s var(--spring),
+    box-shadow 0.4s ease;
 }
 .post-card:hover {
-  border-color: color-mix(in oklab, var(--foreground) 26%, transparent);
+  border-color: rgb(255 255 255 / 0.18);
   transform: translateY(-3px);
-  box-shadow: 0 16px 34px -24px rgb(0 0 0 / 0.7);
+  box-shadow:
+    inset 0 1px 0 var(--glass-light),
+    inset 0 -1px 0 var(--glass-shade),
+    0 24px 52px -28px rgb(0 0 0 / 0.9);
 }
 
 /* 悬停时标题被「划重点」—— 规则见上方 .mark-hover */
@@ -390,13 +508,27 @@
   border-radius: 6px;
 }
 
+/*
+ * Live2D 小人由第三方脚本插到 <body> 上（在 #__nuxt 之外、是其兄弟节点）。
+ *
+ * 为什么写在文件最末尾：
+ * 上面那个 @layer components 的大括号从这里往上一直没关，
+ * 写在那里面的东西全部属于 layer —— 而 @layer 里的 !important 行为很绕，
+ * 且 layer 优先级低于任何未分层 CSS（第三方 waifu.css 就是未分层的）。
+ * 结果就是「写了等于没写」（实测 dev CSS 里搜不到这条规则）。
+ * 放在文件最后一个块之后，才是真正在 layer 之外。
+ *
+ * 层叠顺序：html 底色 → 光斑(0) → 颗粒(1) → 内容(10) → 小人(50)
+ */
 #waifu {
   zoom: 0.8;
+  z-index: 50 !important;
 }
 
 /* 收起后留在左下角的那个小圆钮是独立的根节点，跟小人一起缩 */
 #waifu-toggle {
   zoom: 0.8;
+  z-index: 50 !important;
 }
 
 /* ── 尊重「减少动态效果」 ──────────────────────── */

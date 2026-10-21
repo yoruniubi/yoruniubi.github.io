@@ -10,13 +10,17 @@ const route = useRoute()
  *   /blogs/关于读研生活
  * 中文网址必须解码后再查，否则永远查不到，页面直接 404。
  * 用 decodeURI 而不是 decodeURIComponent：前者不会把 %2F 变成路径分隔符。
+ *
+ * 传 computed 而不是裸字符串：裸字符串只在 setup 那一瞬读一次，组件复用时
+ * 拿到的还是旧 path（编译产物里会被固化成常量 key）。computed 会被 Nuxt watch，
+ * path 一变就重新取数。
  */
-const pagePath = decodeURI(route.path)
+const pagePath = computed(() => decodeURI(route.path))
 
 const { data: doc } = await useAsyncData(pagePath, async () => {
   const found =
-    (await queryCollection('pages').path(pagePath).first()) ??
-    (await queryCollection('blogs').path(pagePath).first())
+    (await queryCollection('pages').path(pagePath.value).first()) ??
+    (await queryCollection('blogs').path(pagePath.value).first())
 
   // 404 必须在 handler 里抛，不能写完 useAsyncData 就在外面同步检查 doc.value：
   // 客户端 hydration 那一刻数据还没到（静态站要从 _payload.json 取），
@@ -33,23 +37,33 @@ useSeoMeta({
   description: () => doc.value?.description ?? undefined,
 })
 
-/** 同一条时间轴上前一篇 / 后一篇（只对文章生效） */
-const { data: timeline } = await useAsyncData(`timeline:${pagePath}`, async () => {
-  if (!pagePath.startsWith('/blogs/')) return { older: null, newer: null }
+/**
+ * 同一条时间轴上前一篇 / 后一篇（只对文章生效）。
+ *
+ * 这里同样踩过 key 的坑：模板字面量里的 pagePath 只是个普通字符串 ——
+ * 就算 pagePath 本身是 computed，`timeline:${pagePath.value}` 也在 setup
+ * 那一瞬被求值成了常量。所以要把整件事包成 getter，让 Nuxt 能 watch 到。
+ */
+const { data: timeline } = await useAsyncData(
+  () => `timeline:${pagePath.value}`,
+  async () => {
+    const p = pagePath.value
+    if (!p.startsWith('/blogs/')) return { older: null, newer: null }
 
-  const all = await queryCollection('blogs')
-    .order('date', 'ASC')
-    .select('path', 'title', 'date')
-    .all()
+    const all = await queryCollection('blogs')
+      .order('date', 'ASC')
+      .select('path', 'title', 'date')
+      .all()
 
-  const i = all.findIndex((p) => p.path === pagePath)
-  if (i === -1) return { older: null, newer: null }
+    const i = all.findIndex((x) => x.path === p)
+    if (i === -1) return { older: null, newer: null }
 
-  return {
-    older: i > 0 ? all[i - 1] : null,
-    newer: i < all.length - 1 ? all[i + 1] : null,
-  }
-})
+    return {
+      older: i > 0 ? all[i - 1] : null,
+      newer: i < all.length - 1 ? all[i + 1] : null,
+    }
+  },
+)
 
 const date = computed(() => {
   const d = doc.value
@@ -69,25 +83,29 @@ const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : ''
 </script>
 
 <template>
-  <ReadingProgress />
-
   <!--
-    正文列：居中 + 固定行宽。宽度 = `max-w-measure`，
-    也就是 main.css 里的 `--container-measure`（现在 48rem = 768px，
-    17px 字号下约一行 45 个汉字）—— 想宽一点只改那一个数字。
-
-    以前正文是左对齐贴在 1080px 容器左边，右边空一大块；而左下角正好是
-    Live2D 小人，两者抢位置。居中之后，宽屏上小人落在左侧空白里
-    （窗口 ≳ 1310px 就完全不重叠；改宽列宽这个阈值会跟着变大）。
-
-    正文实际宽度由这一列的 max-w 决定 —— typography 插件自带的
-    `max-width: 65ch` 已经在 .prose 里被去掉，见 main.css。
-
-    ReadingProgress 拿到 article 外面：它是 fixed 的（只读 documentElement），
-    跟位置无关，这样里层不用多包一层 div、也不用重新缩进。
-    pb-28 会跟页脚的 mt 叠成 245px 的空白（pb-28 + footer mt-28 + 段落下边距），收到 pb-16。
+    ⚠️ 空白 bug 的真正元凶在 app.vue（`:transition` 的 `mode: 'out-in'`），
+    这里保持**单一根节点**只是顺手加固 —— Vue 的 <Transition> 本来也要求单根。
+    完整机制见 app.vue 里的注释。
   -->
-  <article v-if="doc" class="mx-auto w-full max-w-measure pb-16 pt-14">
+  <div>
+    <ReadingProgress />
+
+    <!--
+      正文列：居中 + 固定行宽。宽度 = `max-w-measure`，
+      也就是 main.css 里的 `--container-measure`（现在 48rem = 768px，
+      17px 字号下约一行 45 个汉字）—— 想宽一点只改那一个数字。
+
+      以前正文是左对齐贴在 1080px 容器左边，右边空一大块；而左下角正好是
+      Live2D 小人，两者抢位置。居中之后，宽屏上小人落在左侧空白里
+      （窗口 ≳ 1310px 就完全不重叠；改宽列宽这个阈值会跟着变大）。
+
+      正文实际宽度由这一列的 max-w 决定 —— typography 插件自带的
+      `max-width: 65ch` 已经在 .prose 里被去掉，见 main.css。
+
+      pb-28 会跟页脚的 mt 叠成 245px 的空白（pb-28 + footer mt-28 + 段落下边距），收到 pb-16。
+    -->
+    <article v-if="doc" class="mx-auto w-full max-w-measure pb-16 pt-14">
     <NuxtLink to="/" class="back-link">
       <ArrowLeft :size="14" :stroke-width="1.75" />
       <span>返回目录</span>
@@ -177,5 +195,6 @@ const fmt = (d?: string) => (typeof d === 'string' ? d.replaceAll('-', '.') : ''
       </NuxtLink>
       <div v-else />
     </nav>
-  </article>
+    </article>
+  </div>
 </template>
