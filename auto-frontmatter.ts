@@ -13,8 +13,8 @@
  *      用正文里出现的第一段当摘要
  *   3. 把已经变成 title / description 的那两段从正文里删掉，
  *      否则标题和第一段会在页面上出现两遍
- *   4. 图片的相对地址改成绝对地址：`![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`
- *      这样图片跟 `.md` 放在一起就能用，不必再手动搬图片
+ *   4. 媒体资源的相对地址改成绝对地址：`![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`，
+ *      `<video src="x.mp4">` 同理。图片、视频跟 `.md` 放在一起就能用，不必手动搬
  *      （另一半：dev 下由 nuxt.config.ts 的 nitro.publicAssets 供图，
  *       静态产物由 scripts/sync-images.mjs 在 generate 后自动同步）
  *   5. 分类：从文件夹名推出来（`blogs/开发折腾/某篇.md` → `开发折腾`），
@@ -113,20 +113,29 @@ function toImagesUrl(src: string, mdDir: string): string | undefined {
   return `/images/${stack.map((p) => p.replace(/ /g, '%20')).join('/')}`
 }
 
-/** minimark 里的图片是 `['img', { src, alt }]`；顺手管一下原始 HTML 的 <img src="x.png"> */
+/** 原始 HTML 文本节点（整段没被解析的 HTML 字符串）里的引用也改掉。
+ *  注意得原地改 node[i]，slice 出来的是新数组，改了不生效。 */
 const HTML_SRC = /\b(src|href)\s*=\s*(["'])([^"']+)\2/gi
 
-/** 把整棵树里所有图片的相对地址换成绝对地址（就地改） */
+/** minimark 里媒体标签会被解析成真正的元素节点（props 是对象）：
+ *  ["img", {src}]、["video", {src, poster}]、["source", {src}]…
+ *  这些节点的相对地址也要改写。跟下面 'html' 分支的原始文本是两回事。 */
+const MEDIA_TAGS = new Set(['img', 'video', 'audio', 'source', 'embed', 'track'])
+const MEDIA_ATTRS = ['src', 'poster'] as const
+
+/** 把整棵树里所有媒体资源的相对地址换成绝对地址（就地改） */
 function rewriteImageSources(nodes: unknown[], mdDir: string): void {
   for (const node of nodes) {
     if (!Array.isArray(node)) continue
 
     const props = node[1]
-    if (node[0] === 'img' && props && typeof props === 'object') {
-      const src = (props as Record<string, unknown>).src
-      if (typeof src === 'string') {
-        const next = toImagesUrl(src, mdDir)
-        if (next) (props as Record<string, unknown>).src = next
+    if (typeof node[0] === 'string' && MEDIA_TAGS.has(node[0]) && props && typeof props === 'object') {
+      for (const attr of MEDIA_ATTRS) {
+        const val = (props as Record<string, unknown>)[attr]
+        if (typeof val === 'string') {
+          const next = toImagesUrl(val, mdDir)
+          if (next) (props as Record<string, unknown>)[attr] = next
+        }
       }
     }
 
