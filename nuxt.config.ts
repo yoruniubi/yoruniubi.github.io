@@ -26,6 +26,29 @@ export default defineNuxtConfig({
 
   content: {
     build: {
+      /**
+       * 数学公式：正文里写 `$\rightarrow$`、`$\frac{a}{b}$` 会渲染成真的公式。
+       *
+       * remark-math 负责把 `$...$` / `$$...$$` 认出来，rehype-katex 负责排版。
+       * output 特意选了 mathml：KaTeX 只输出浏览器原生的 <math> 标签，
+       * 不吐 <span class="katex">，所以**不用引 katex.min.css、不用加载字体**，
+       * 页面体积和首屏都没变化。（默认的 html 模式要配 CSS，为了一个箭头不值当。）
+       * throwOnError: false —— 写错公式不要让整篇构建失败，原样显示出来更好排查。
+       */
+      markdown: {
+        remarkPlugins: {
+          'remark-math': {},
+        },
+        rehypePlugins: {
+          'rehype-katex': {
+            // 注意：@nuxt/content 只认 `options` 这个键，选项要嵌一层
+            options: {
+              output: 'mathml',
+              throwOnError: false,
+            },
+          },
+        },
+      },
       pathMeta: {
         slugifyOptions: {
           remove: /[^\w\s\u4e00-\u9fff\u3400-\u4dbf$*_+~.()'"!\-:@]+/g,

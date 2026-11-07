@@ -42,12 +42,33 @@ const POST_COLLECTIONS = ['blogs']
  */
 function nodeText(node: unknown): string {
   if (!Array.isArray(node)) return typeof node === 'string' ? node : ''
+  // <annotation> 是 MathML 里存 LaTeX 源码的地方，屏幕上不显示。
+  // 抽摘要时必须跳过，否则 `$\rightarrow$` 会变成“→\rightarrow”。
+  if (node[0] === 'annotation') return ''
   return node
     .slice(2)
     .map((child) =>
       Array.isArray(child) ? nodeText(child) : typeof child === 'string' ? child : '',
     )
     .join('')
+}
+
+/**
+ * 判断 description 是不是 mdc 自动从「第一段」抽出来的，而不是你在 frontmatter 里手写的。
+ *
+ * 为什么要判：mdc 的 contentHeading 抽摘要用的是它自己的 nodeTextContent，
+ * 而那个函数会把 MathML 里存 LaTeX 源码的 <annotation> 当正文算进去 ——
+ * `$\rightarrow$` 于是被抽成 "→\rightarrow"，直接写进了 content.description。
+ * 我们的 nodeText 会跳过 annotation，所以用干净的那份替掉它；
+ * 但前提是它确实是自动抽的 —— 你手写的摘要一个字都不能动。
+ *
+ * 怎么判：把现有内容里的 `\命令` 抹掉、空白抹掉，跟干净版逐字比对，
+ * 相等就说明两者本来是同一段话，只是多了 LaTeX 源码。
+ */
+function isAutoDescription(description: unknown, clean: string): boolean {
+  if (typeof description !== 'string' || !description) return false
+  const normalize = (s: string) => s.replace(/\\[a-zA-Z]+/g, '').replace(/\s+/g, '')
+  return normalize(description) === normalize(clean)
 }
 
 /** 标题降一级的对照表 */
@@ -223,7 +244,7 @@ export function applyAutoFrontmatter(
     if (content.seo && !content.seo.title) content.seo.title = content.title
   }
 
-  // ③ 把已经变成 title / description 的那两段从正文里删掉
+  // ③ 取正文树
   const rawBody = content.body as any
   const nodes: unknown[] | undefined = Array.isArray(rawBody)
     ? rawBody
@@ -236,6 +257,28 @@ export function applyAutoFrontmatter(
   //    mdDir = 这个 md 在 content/ 下的目录（例如 blogs/开发折腾/关于Win11系统更改用户名）
   rewriteImageSources(nodes, toContentKey(filePath).split('/').slice(0, -1).join('/'))
 
+  // ⑤ 摘要：`# 标题` 后面那段就是摘要。
+  //
+  //    mdc 的 contentHeading 已经自动抽过一次了，但它用的 nodeTextContent 会把
+  //    MathML 里存 LaTeX 源码的 <annotation> 当正文 —— `$\rightarrow$` 于是被抽成
+  //    "→\rightarrow"，meta description 和首页卡片上就会漏出 LaTeX 源码。
+  //    所以用自己的 nodeText 重抽一遍；只在「原本没摘要」或「原本那份就是自动抽的」
+  //    时候动手，你写在 frontmatter 里的摘要一个字不动。
+  //    顺带兑上了「标题后面直接跟 `## 小节`」时摘要为空的情况。
+  if (POST_COLLECTIONS.includes(collectionName)) {
+    const firstP = nodes.find(
+      (n): n is unknown[] => Array.isArray(n) && n[0] === 'p',
+    )
+    const firstPText = firstP ? nodeText(firstP).trim() : ''
+    if (
+      firstPText
+      && (!content.description || isAutoDescription(content.description, firstPText))
+    ) {
+      content.description = firstPText
+    }
+  }
+
+  // ⑥ 把已经变成 title / description 的那两段从正文里删掉
   let eaten = 0
 
   if (
@@ -259,7 +302,7 @@ export function applyAutoFrontmatter(
 
   if (eaten > 0) nodes.splice(0, eaten)
 
-  // ⑤ 分类：从文件夹推出来，并把分类段从网址里拿掉
+  // ⑦ 分类：从文件夹推出来，并把分类段从网址里拿掉
   //    网址保持 /blogs/某篇（不带分类），分类只体现在首页的分组上
   if (POST_COLLECTIONS.includes(collectionName)) {
     const category = deriveCategory(toContentKey(filePath))
@@ -272,21 +315,11 @@ export function applyAutoFrontmatter(
     }
   }
 
-  // ⑥ 摘要兜底：`# 标题` 后面没有段落时，用正文里出现的第一段当摘要。
-  //    例如标题后面直接跟 `## 一、xxx`，contentHeading 就什么都抽不到，
-  //    卡片上和 <meta name="description"> 里会是空的。
-  if (POST_COLLECTIONS.includes(collectionName) && !content.description) {
-    const firstP = nodes.find(
-      (n): n is unknown[] => Array.isArray(n) && n[0] === 'p',
-    )
-    const text = firstP ? nodeText(firstP).trim() : ''
-    if (text) content.description = text
-  }
-  // ⑦ 正文标题整体降一级（大标题已经占了 h1）
+  // ⑧ 正文标题整体降一级（大标题已经占了 h1）
   if (POST_COLLECTIONS.includes(collectionName)) {
     shiftHeadings(nodes)
 
-    // ⑧ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+    // ⑨ 网址去重：`某篇/某篇.md` → `/blogs/某篇`
     if (typeof content.path === 'string') content.path = shortenPath(content.path)
   }
 }
