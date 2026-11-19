@@ -1,30 +1,32 @@
 /**
  * 自动补全 frontmatter —— 写文章时只写正文就行。
  *
- *   title        不写 → 用正文里第一个 `# 标题`
- *   description  不写 → 用 `# 标题` 后面的第一段
+ *   title        不写 → 用文件名（frontmatter 里写了 title 就以你写的为准）
+ *   description  不写 → 用正文第一段
  *   date         不写 → 用 git 里这个文件内容最后一次被改动的日期
- *   category     不用写 → 用文件所在的文件夹名（见下面第 5 条）
+ *   category     不用写 → 用文件所在的文件夹名（见下面第 7 条）
  *
- * title / description 其实不用我们管：Nuxt Content 自己会从正文里抽
- * （@nuxtjs/mdc 的 contentHeading）。这个文件补的是它不管的七件事：
+ * 标题不跟正文标题走：正文第一行写 `# 前言` 也好、`## 前言` 也好，
+ * 都不会变成文章标题（否则一篇文章的标题会变成「前言」这种小节名）。
+ * 想换标题就去改文件名，或者在 frontmatter 里写一行 title:。
+ * 这个文件负责的八件事：
  *   1. date
- *   2. description 兜底：`# 标题` 后面没有段落时（比如直接跟了个 `## 小节`），
- *      用正文里出现的第一段当摘要
- *   3. 把已经变成 title / description 的那两段从正文里删掉，
+ *   2. title 兜底：文件名（`_` 当空格；文件名没信息量时用上级文件夹名）
+ *   3. description 兜底：正文里出现的第一段当摘要
+ *   4. 把已经变成 title / description 的那两段从正文里删掉，
  *      否则标题和第一段会在页面上出现两遍
- *   4. 媒体资源的相对地址改成绝对地址：`![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`，
+ *   5. 媒体资源的相对地址改成绝对地址：`![](image-8.png)` → `![](/images/blogs/某篇/image-8.png)`，
  *      `<video src="x.mp4">` 同理。图片、视频跟 `.md` 放在一起就能用，不必手动搬
  *      （另一半：dev 下由 nuxt.config.ts 的 nitro.publicAssets 供图，
  *       静态产物由 scripts/sync-images.mjs 在 generate 后自动同步）
- *   5. 分类：从文件夹名推出来（`blogs/开发折腾/某篇.md` → `开发折腾`），
+ *   6. 分类：从文件夹名推出来（`blogs/开发折腾/某篇.md` → `开发折腾`），
  *      并把分类段从网址里拿掉，网址保持 /blogs/某篇 不变
- *   6. 把正文里的标题整体降一级，
+ *   7. 把正文里的标题整体降一级，
  *      否则老文章里用 `#` 分的节会变成跟文章大标题一样的 h1
- *   7. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
+ *   8. 网址去重：`某篇/某篇.md` → `/blogs/某篇`
  */
 import { execFileSync } from 'node:child_process'
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 
 const CONTENT_DIR = 'content'
 
@@ -226,6 +228,41 @@ function deriveCategory(key: string): string | undefined {
   return parts.length >= 3 ? parts[1] : undefined
 }
 
+/** 文件名里没有信息量的那些词：这种文件用上级文件夹名当标题 */
+const GENERIC_NAMES = new Set(['index', 'learning', 'note', 'notes', 'readme', 'untitled'])
+
+/**
+ * 由 stem（`blogs/学习笔记/某篇`）推出标题：
+ *   `对于deepseek_harness插件的一些想法` → `对于deepseek harness插件的一些想法`
+ *   `关于Win11…/learning`                → `关于Win11…`（文件夹名）
+ * 文件名是你自己起的，改文件名就是改标题 —— 不需要在正文里写任何东西。
+ */
+function titleFromStem(stem: unknown): string {
+  const parts = String(stem ?? '').split('/').filter(Boolean)
+  let name = parts[parts.length - 1] ?? ''
+  if (GENERIC_NAMES.has(name.toLowerCase()) && parts.length >= 2) {
+    name = parts[parts.length - 2] ?? name
+  }
+  return (name || '无标题').replace(/\.(md|markdown)$/i, '').replace(/_/g, ' ')
+}
+
+/**
+ * frontmatter 里手写的 title。没写就是 undefined。
+ * 只认开头 `---` 块里的那一行，正文里的 `title:` 不算。
+ */
+function frontmatterTitle(filePath: string): string | undefined {
+  try {
+    const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(filePath, 'utf8'))
+    const fm = block?.[1]
+    if (!fm) return undefined
+    const line = /^title:[ \t]*(.*)$/m.exec(fm)
+    const value = line?.[1]?.trim().replace(/^(['"])(.*)\1$/, '$2')
+    return value || undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** 由 nuxt.config.ts 的 `content:file:afterParse` 钩子调用 */
 export function applyAutoFrontmatter(
   filePath: string,
@@ -238,10 +275,15 @@ export function applyAutoFrontmatter(
     content.date = gitDate(key) ?? dateFromMtime(filePath)
   }
 
-  // ② 标题兜底：frontmatter 没写、正文也没有 `# 标题`，就用文件名当标题
-  if (!content.title) {
-    content.title = String(content.stem ?? '').split('/').pop() || '无标题'
-    if (content.seo && !content.seo.title) content.seo.title = content.title
+  // ② 标题：一律用文件名，正文里的 `# 标题` / `## 前言` 一概不参与。
+  //    唯一的例外是 frontmatter 里手写了 title（「关于职业规划」那种）。
+  //    @nuxt/content 在这之前已经把正文第一个 h1 当标题塞进来了，这里必须盖掉，
+  //    否则 `# 前言` 开头的旧文章标题就会变成「前言」。
+  const ownTitle = frontmatterTitle(filePath)
+  const autoTitle = content.title
+  content.title = ownTitle ?? titleFromStem(content.stem ?? toContentKey(filePath))
+  if (content.seo && (!content.seo.title || content.seo.title === autoTitle)) {
+    content.seo.title = content.title
   }
 
   // ③ 取正文树
@@ -257,7 +299,7 @@ export function applyAutoFrontmatter(
   //    mdDir = 这个 md 在 content/ 下的目录（例如 blogs/开发折腾/关于Win11系统更改用户名）
   rewriteImageSources(nodes, toContentKey(filePath).split('/').slice(0, -1).join('/'))
 
-  // ⑤ 摘要：`# 标题` 后面那段就是摘要。
+  // ⑤ 摘要：正文里出现的第一段。
   //
   //    mdc 的 contentHeading 已经自动抽过一次了，但它用的 nodeTextContent 会把
   //    MathML 里存 LaTeX 源码的 <annotation> 当正文 —— `$\rightarrow$` 于是被抽成
@@ -279,11 +321,15 @@ export function applyAutoFrontmatter(
   }
 
   // ⑥ 把已经变成 title / description 的那两段从正文里删掉
+  //    标题不再从正文里抽了，但正文开头如果还挂着一个跟标题一模一样的标题
+  //    （`# 某篇` 或 `## 某篇`），页面上就会上下重复一遍，所以一并删掉。
+  const HEADINGS = new Set(['h1', 'h2', 'h3'])
   let eaten = 0
 
   if (
     Array.isArray(nodes[0])
-    && nodes[0][0] === 'h1'
+    && typeof nodes[0][0] === 'string'
+    && HEADINGS.has(nodes[0][0])
     && nodeText(nodes[0]).trim() === String(content.title ?? '').trim()
   ) {
     eaten = 1
